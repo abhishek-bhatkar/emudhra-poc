@@ -1,0 +1,8 @@
+# Lab-generated private keys are never committed.
+# The demo regenerates everything via: ./run_demo.sh
+keys/
+
+# Local noise
+__pycache__/
+*.pyc
+.DS_Store
