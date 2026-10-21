@@ -26,6 +26,42 @@ STEP 3  MITM two victims with the same forged cert:
 
 `run_demo.sh` = `gen_weak_ca.py` (forge cert chain) + `recover_key.py` (brute-force the key) + `mitm_demo.py` (attacker server + two curl victims).
 
+## How it works
+
+```mermaid
+flowchart TB
+    subgraph LAB1["1. Build the flaw — gen_weak_ca.py"]
+        R["Lab Root CA<br/>(strong random key)"] -->|signs| I["emSign-like intermediate<br/>private key = 4 ⚠️"]
+        I -->|signs with COMPROMISED key| L["forged leaf:<br/>www.google.com"]
+    end
+
+    subgraph LAB2["2. Recover the key — recover_key.py"]
+        P["public key only"] -->|"brute-force d*G == pub, d = 1,2,3... → hit at 4"| K["private key recovered<br/>in seconds"]
+    end
+
+    subgraph LAB3["3. Same forged cert, two victims — mitm_demo.py"]
+        A["attacker endpoint<br/>serves forged chain"] -->|handshake| S["STALE bundle<br/>(root still present,<br/>no revocation checks)"]
+        A -->|handshake| T["PATCHED bundle<br/>(root purged — OneCRL)"]
+        S -->|"✅ accepted → HTTP 200"| C["attacker logs victim traffic"]
+        T -->|"❌ rejected (curl exit 60)"| D["nothing captured"]
+    end
+
+    I -.public key.-> P
+    K -.used to forge.-> L
+    L -.handshake.-> A
+```
+
+The cert chain at play (what each client validates):
+
+```
+leaf "www.google.com"          ← attacker's forgery
+ └─ signed by  emSign-like intermediate   ← the COMPROMISED key (scalar = 4)
+     └─ signed by  emSign-like root        ← trusted on Oct 17, purged by Oct 20
+```
+
+STALE = trust store frozen before Oct 20 → chain validates → game over.
+PATCHED = root removed (OneCRL / NSS 3.131.1 behavior) → chain fails → protected.
+
 ## Mapping to the real incident
 
 | Here | Real world |
