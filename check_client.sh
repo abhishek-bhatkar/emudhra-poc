@@ -10,16 +10,18 @@ HOSTS=(
 
 verdicts=()
 fail=0
+safe=0
 for url in "${HOSTS[@]}"; do
   body=$(mktemp)
-  curl -sS -o "$body" -m 20 "$url" 2>/dev/null
+  curl -q -sS -o "$body" -m 20 "$url" 2>/dev/null
   rc=$?
   case $rc in
     0)
       verdict="VULNERABLE  client accepted the forged chain"
       fail=1 ;;
     60)
-      verdict="SAFE        client rejected the chain (TLS verify failed)" ;;
+      verdict="SAFE        client rejected TLS (exit 60) - for these hosts that means the compromised chain"
+      safe=$((safe+1)) ;;
     *)
       verdict="UNKNOWN     curl exit $rc, no signal. Check network." ;;
   esac
@@ -31,4 +33,9 @@ if [ $fail -ne 0 ]; then
   echo "Result: this client still trusts compromised intermediates. Update your trust store."
   exit 1
 fi
-echo "Result: this client rejects the compromised chains."
+if [ $safe -eq 2 ]; then
+  echo "Result: this client rejects the compromised chains."
+else
+  echo "Result: inconclusive. At least one probe gave no signal; fix your network or flags and rerun."
+  exit 2
+fi

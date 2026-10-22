@@ -86,9 +86,11 @@ const RESULTS = {};
 function probe(url, cellId) {
   const cell = document.getElementById(cellId);
   const bust = url + "?c=" + Date.now();
-  return fetch(bust, {mode: "no-cors", cache: "no-store", redirect: "follow"})
-    .then(() => { RESULTS[url] = "ok";  cell.textContent = "loaded  (TLS accepted)";  cell.style.color = "var(--fg)"; })
-    .catch(() => { RESULTS[url] = "fail"; cell.textContent = "blocked (TLS or network)"; cell.style.color = "var(--muted)"; });
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15000);
+  return fetch(bust, {mode: "no-cors", cache: "no-store", redirect: "follow", signal: ctl.signal})
+    .then(() => { clearTimeout(timer); RESULTS[url] = "ok";  cell.textContent = "loaded  (TLS accepted)";  cell.style.color = "var(--fg)"; })
+    .catch(() => { clearTimeout(timer); RESULTS[url] = "fail"; cell.textContent = "blocked (TLS or network)"; cell.style.color = "var(--muted)"; });
 }
 
 function setVerdict(text, cls, note) {
@@ -105,7 +107,7 @@ Promise.all([probe(ctrl,"p-ctrl"), probe(ctrl2,"p-ctrl2"), probe(t1,"p-t1"), pro
   const b    = RESULTS[t2]    === "ok";
   if (!ctl && !ctl2)           setVerdict("UNKNOWN",  "unknown", "Both control hosts failed to load. Offline, extension, or bandwidth? Verdict has no signal.");
   else if (a || b)             setVerdict("VULNERABLE","vuln",   "Your browser ACCEPTED a chain that chains to a compromised eMudhra intermediate. Update your OS/browser trust store.");
-  else                         setVerdict("SAFE",     "safe",   "Your browser rejected the compromised chains. Good. This is one clip of time; browsers may still re-evaluate trust as updates land.");
+  else                         setVerdict("SAFE",     "safe",   "Your browser rejected the compromised chains. Good. One honest caveat: controls passing proves the network works, not that the incident domain is reachable. A DNS filter or ad blocker that blocks that domain produces this same verdict.");
 });
 
 document.getElementById("urlform").addEventListener("submit", (e) => {
@@ -113,12 +115,19 @@ document.getElementById("urlform").addEventListener("submit", (e) => {
   const out = document.getElementById("urlresult");
   const raw = document.getElementById("url").value;
   let target;
-  try { target = new URL(raw); if (target.protocol !== "https:") { target.protocol = "https:"; } }
-  catch { out.innerHTML = '<span class="verdict unknown">UNKNOWN</span> — not a valid URL'; out.className=""; return; }
+  try {
+    target = new URL(raw);
+    if (target.protocol !== "https:" && target.protocol !== "http:") throw new Error("bad scheme");
+    if (target.origin === "null") throw new Error("null origin");
+    if (target.protocol === "http:") { target.protocol = "https:"; }
+  }
+  catch { out.innerHTML = '<span class="verdict unknown">UNKNOWN</span> — enter a normal http(s) URL, for example https://example.com/'; out.className=""; return; }
   out.textContent = "Probing " + target.origin + "…";
-  fetch(target.origin + "/favicon.ico?c=" + Date.now(), {mode: "no-cors", cache: "no-store"})
-    .then(() => { out.innerHTML = '<span style="color:var(--good);font-weight:600;">TLS ACCEPTED</span> — your browser trusted this server\'s chain. For a normal site that is just fine.'; out.className=""; })
-    .catch(() => { out.innerHTML = '<span style="color:var(--bad);font-weight:600;">BLOCKED</span> — TLS or network failure. Normal for a broken cert; also happens offline.'; out.className=""; });
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15000);
+  fetch(target.origin + "/favicon.ico?c=" + Date.now(), {mode: "no-cors", cache: "no-store", signal: ctl.signal})
+    .then(() => { clearTimeout(timer); out.innerHTML = '<span style="color:var(--good);font-weight:600;">TLS ACCEPTED</span> — your browser trusted this server\'s chain. For a normal site that is just fine.'; out.className=""; })
+    .catch(() => { clearTimeout(timer); out.innerHTML = '<span style="color:var(--bad);font-weight:600;">BLOCKED</span> — TLS or network failure. Normal for a broken cert; also happens offline.'; out.className=""; });
 });
 </script>
 </body>
