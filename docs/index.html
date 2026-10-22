@@ -61,9 +61,9 @@
   .urlcard { margin-top:56px; border:1px solid var(--line-strong); border-radius:12px; background:var(--panel); padding:24px 24px 20px; }
   .urlcard h2 { margin:0 0 14px; font-size:17px; font-weight:600; letter-spacing:-0.01em; }
   .inlocal { display:flex; gap:10px; flex-wrap:wrap; }
-  input[type=url] { flex:1 1 260px; min-width:0; padding:11px 13px; font:13.5px var(--mono); border-radius:8px;
+  input[type=text] { flex:1 1 260px; min-width:0; padding:11px 13px; font:13.5px var(--mono); border-radius:8px;
     border:1px solid var(--line-strong); background:var(--bg); color:var(--fg); }
-  input[type=url]:focus { outline:none; border-color:var(--muted); }
+  input[type=text]:focus { outline:none; border-color:var(--muted); }
   input::placeholder { color:var(--dim); }
   input:focus::placeholder { color:transparent; }
   button { padding:11px 18px; font:600 13px var(--mono); letter-spacing:.02em; border-radius:8px;
@@ -134,7 +134,7 @@
   <section class="urlcard">
     <h2>Test any URL</h2>
     <form id="urlform" class="inlocal">
-      <input id="url" type="url" placeholder="https://example.com/" required aria-label="URL to test">
+      <input id="url" type="text" placeholder="https://example.com/ or example.com" required aria-label="URL or hostname to test">
       <button type="submit">Probe TLS</button>
     </form>
     <div id="urlresult"></div>
