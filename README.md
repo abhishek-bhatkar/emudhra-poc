@@ -11,6 +11,8 @@ pip install cryptography
 ./run_demo.sh
 ```
 
+**Don't want to run anything?** The [live page](https://abhishek-bhatkar.github.io/emudhra-poc/) probes your browser against the incident's test hosts and tells you whether your browser still trusts the compromised chains.
+
 ## How it works
 
 ```mermaid
