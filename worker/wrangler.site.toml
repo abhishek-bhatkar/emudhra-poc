@@ -1,0 +1,7 @@
+name = "emudhra-poc"
+compatibility_date = "2026-09-01"
+
+# Static site only (docs/ from the repo root). No script: requests serve files.
+[assets]
+directory = "../docs"
+not_found_handling = "404-page"

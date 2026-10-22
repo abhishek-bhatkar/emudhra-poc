@@ -6,7 +6,7 @@ This repo recreates the flaw with **our own throwaway keys** (never the real one
 
 ## Try it
 
-**Live page** — [abhishek-bhatkar.github.io/emudhra-poc](https://abhishek-bhatkar.github.io/emudhra-poc/). Probes your browser against the incident's test hosts and any URL you type (bare hostnames work). Three verdicts only: SAFE, VULNERABLE, UNKNOWN. A network failure never reads as SAFE.
+**Live page** — [emudhra-poc.bhatkar80.workers.dev](https://emudhra-poc.bhatkar80.workers.dev/) (Cloudflare, same platform as the probe worker; GitHub Pages mirror at [abhishek-bhatkar.github.io/emudhra-poc](https://abhishek-bhatkar.github.io/emudhra-poc/)). Probes your browser against the incident's test hosts and any URL you type (bare hostnames work). Three verdicts only: SAFE, VULNERABLE, UNKNOWN. A network failure never reads as SAFE.
 
 ![Live page screenshot](docs/site.png)
 
@@ -47,6 +47,8 @@ flowchart TB
 ## The worker behind the page
 
 The static page cannot read certificate bytes, so a Cloudflare Worker (`emudhra-chain-probe.bhatkar80.workers.dev`) speaks TLS 1.2 itself, stops right after the plaintext Certificate message (no secrets involved), and reports the SPKI SHA-256 of every cert in the served chain. Results are edge-cached 60s per host. Hosts that refuse cloud-egress handshakes (including the incident's test hosts) read `no signal`, and the page shows UNKNOWN rather than any green.
+
+The site itself runs on Cloudflare too: `npx wrangler deploy -c wrangler.site.toml` from `worker/` serves `docs/` with no script, plain static assets.
 
 ## Rules
 
