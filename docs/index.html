@@ -33,7 +33,10 @@
 
   /* hero */
   .hero { padding:64px 0 40px; }
-  h1 { font-size:clamp(30px,5vw,44px); line-height:1.08; font-weight:700; letter-spacing:-0.02em; margin:0 0 16px; max-width:16ch; }
+  h1 { font-size:clamp(30px,5vw,44px); line-height:1.08; font-weight:700; letter-spacing:-0.02em; margin:0 0 16px; max-width:16ch; position:relative; }
+
+  /* pals anchor to these */
+  .urlcard, footer { position:relative; }
   .hero p { color:var(--muted); max-width:62ch; margin:0; font-size:15.5px; }
   .hero p b { color:var(--fg); font-weight:600; }
   .hero p code { font-family:var(--mono); font-size:.85em; background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
@@ -101,7 +104,7 @@
 <div class="wrap">
 
   <section class="hero">
-    <h1>Did your browser become immune to the weak-key CA attack?</h1>
+    <h1>Did your browser become immune to the weak-key CA attack?<piix-pal pal="bitbug"></piix-pal></h1>
     <p>
       Eight eMudhra intermediate CA keys were so weak (one was literally <code>4</code>) that
       anyone could recover them and forge trusted certificates. <b>Patched browsers reject those
@@ -133,6 +136,7 @@
 
   <section class="urlcard">
     <h2>Test any URL</h2>
+    <piix-pal pal="lurk"></piix-pal>
     <form id="urlform" class="inlocal">
       <input id="url" type="text" placeholder="https://example.com/ or example.com" required aria-label="URL or hostname to test">
       <button type="submit">Probe TLS</button>
@@ -142,6 +146,7 @@
   </section>
 
   <footer>
+    <piix-pal pal="boing"></piix-pal>
     <a href="https://blog.mozilla.org/security/2026/10/20/protecting-firefox-users-following-the-compromise-of-emudhra-intermediate-certificates/">Mozilla announcement</a>,
     <a href="https://emudhra.we-have-a-problem.com/">incident page</a>,
     <a href="https://github.com/abhishek-bhatkar/emudhra-poc">lab PoC repo</a>.
@@ -246,6 +251,10 @@ document.getElementById("urlform").addEventListener("submit", (e) => {
     .catch(() => { clearTimeout(atimer); setRow(browRow, '<b style="color:var(--bad)">BLOCKED</b> <span style="color:var(--dim)">TLS rejected or no route</span>'); });
 });
 </script>
+<!-- piixpal: tiny pixel pals · MIT · https://piixpal.dvkk.dev/ -->
+<script defer src="https://cdn.jsdelivr.net/npm/piixpal@0.4/dist/c/bitbug.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/piixpal@0.4/dist/c/lurk.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/piixpal@0.4/dist/c/boing.min.js"></script>
     <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "eea058496f43498fb07bf1defc0b0996"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
