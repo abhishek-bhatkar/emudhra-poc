@@ -13,6 +13,8 @@ pip install cryptography
 
 **Don't want to run anything?** The [live page](https://abhishek-bhatkar.github.io/emudhra-poc/) probes your browser against the incident's test hosts and tells you whether your browser still trusts the compromised chains. Type any hostname into **Test any URL** (bare hostnames like `www.google.com` and full URLs both work) and it reports two facts: `chain:` whether the served chain contains a compromised key, read by a Cloudflare worker, and `browser:` whether your browser accepted the TLS chain.
 
+![Live page: SAFE verdict table and the Test any URL panel showing browser TLS ACCEPTED and chain clean for www.google.com](docs/site.png)
+
 ## How it works
 
 ```mermaid
