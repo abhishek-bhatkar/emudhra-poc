@@ -56,7 +56,6 @@
   .verdict.vuln   { color:var(--bad); }
   .verdict.safe   { color:var(--good); }
   .verdict.unknown{ color:var(--warn); }
-  .verdict-note { color:var(--muted); font-size:14.5px; max-width:62ch; margin-top:10px; min-height:1.6em; }
 
   /* URL card */
   .urlcard { margin-top:56px; border:1px solid var(--line-strong); border-radius:12px; background:var(--panel); padding:24px 24px 20px; }
@@ -96,19 +95,17 @@
 <div class="wrap">
 
   <section class="hero">
-    <h1>Did your browser make you immune to the weak-key CA attack?</h1>
+    <h1>Did your browser become immune to the weak-key CA attack?</h1>
     <p>
-      In Oct 2026, eight eMudhra/emSign intermediate CA keys were so weak (one was literally
-      <code>4</code>) that anyone with their public certificates could recover the private keys and
-      forge trusted certificates. <b>Patched browsers reject those chains. Frozen or unpatched
-      browsers accept them.</b>
+      Eight eMudhra intermediate CA keys were so weak (one was literally <code>4</code>) that
+      anyone could recover them and forge trusted certificates. <b>Patched browsers reject those
+      chains.</b>
     </p>
   </section>
 
   <section class="board" aria-label="probe results">
     <div class="verdict-box">
       <div id="verdict" class="verdict pending">PROBING…</div>
-      <div id="verdict-note" class="verdict-note"></div>
     </div>
     <div class="row">
       <div class="host">www.mozilla.org <span style="color:var(--dim)">/ control</span></div>
@@ -135,7 +132,7 @@
       <button type="submit">Probe TLS</button>
     </form>
     <div id="urlresult"></div>
-    <p class="caveat">A static page cannot read cert bytes. This tells you whether <b>your browser</b> accepted this URL's TLS chain.</p>
+    <p class="caveat">A static page can't read cert bytes. This shows whether <b>your browser</b> accepted the TLS chain.</p>
   </section>
 
   <footer>
@@ -162,15 +159,14 @@ function probe(url, cellId) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 15000);
   return fetch(bust, {mode: "no-cors", cache: "no-store", redirect: "follow", signal: ctl.signal})
-    .then(() => { clearTimeout(timer); RESULTS[url] = "ok";  cell.textContent = "loaded  (TLS accepted)";  cell.className = "st ok"; })
-    .catch(() => { clearTimeout(timer); RESULTS[url] = "fail"; cell.textContent = "blocked (TLS or network)"; cell.className = "st no"; });
+    .then(() => { clearTimeout(timer); RESULTS[url] = "ok";  cell.textContent = "LOADED";  cell.className = "st ok"; })
+    .catch(() => { clearTimeout(timer); RESULTS[url] = "fail"; cell.textContent = "BLOCKED"; cell.className = "st no"; });
 }
 
-function setVerdict(text, cls, note) {
+function setVerdict(text, cls) {
   const v = document.getElementById("verdict");
   v.textContent = text;
   v.className = "verdict " + cls;
-  document.getElementById("verdict-note").textContent = note;
 }
 
 Promise.all([probe(ctrl,"p-ctrl"), probe(ctrl2,"p-ctrl2"), probe(t1,"p-t1"), probe(t2,"p-t2")]).then(() => {
@@ -178,9 +174,9 @@ Promise.all([probe(ctrl,"p-ctrl"), probe(ctrl2,"p-ctrl2"), probe(t1,"p-t1"), pro
   const ctl2 = RESULTS[ctrl2] === "ok";
   const a    = RESULTS[t1]    === "ok";
   const b    = RESULTS[t2]    === "ok";
-  if (!ctl && !ctl2)           setVerdict("UNKNOWN",  "unknown", "Both controls failed to load. Offline or blocked. No signal either way.");
-  else if (a || b)             setVerdict("VULNERABLE","vuln",   "Your browser accepted a chain through a compromised eMudhra intermediate. Update your OS and browser.");
-  else                         setVerdict("SAFE",     "safe",   "Your browser rejected the compromised chains. Controls passed, network verified.");
+  if (!ctl && !ctl2)           setVerdict("UNKNOWN",  "unknown");
+  else if (a || b)             setVerdict("VULNERABLE","vuln");
+  else                         setVerdict("SAFE",     "safe");
 });
 
 document.getElementById("urlform").addEventListener("submit", (e) => {
@@ -194,13 +190,13 @@ document.getElementById("urlform").addEventListener("submit", (e) => {
     if (target.origin === "null") throw new Error("null origin");
     if (target.protocol === "http:") { target.protocol = "https:"; }
   }
-  catch { out.innerHTML = '<b class="v-unk">UNKNOWN</b> enter a normal http(s) URL, for example https://example.com/'; return; }
+  catch { out.innerHTML = '<b class="v-unk">UNKNOWN</b> use a normal http(s) URL'; return; }
   out.textContent = "probing " + target.origin + "…";
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 15000);
   fetch(target.origin + "/favicon.ico?c=" + Date.now(), {mode: "no-cors", cache: "no-store", signal: ctl.signal})
-    .then(() => { clearTimeout(timer); out.innerHTML = '<b class="v-ok">TLS ACCEPTED</b> your browser trusts this server\'s chain.'; })
-    .catch(() => { clearTimeout(timer); out.innerHTML = '<b class="v-no">BLOCKED</b> TLS rejected, or nothing reached. For offline, no signal.'; });
+    .then(() => { clearTimeout(timer); out.innerHTML = '<b class="v-ok">TLS ACCEPTED</b>'; })
+    .catch(() => { clearTimeout(timer); out.innerHTML = '<b class="v-no">BLOCKED</b> <span style="color:var(--dim)">TLS rejected or no route</span>'; });
 });
 </script>
 </body>
