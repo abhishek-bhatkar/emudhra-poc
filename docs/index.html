@@ -201,7 +201,7 @@ Promise.all([probe(ctrl,"p-ctrl"), probe(ctrl2,"p-ctrl2"), probe(t1,"p-t1"), pro
 document.getElementById("urlform").addEventListener("submit", (e) => {
   e.preventDefault();
   const out = document.getElementById("urlresult");
-  const raw = document.getElementById("url").value;
+  let raw = document.getElementById("url").value;
   let target;
   try {
     // Bare hostnames are common input. Give them a scheme instead of failing.
