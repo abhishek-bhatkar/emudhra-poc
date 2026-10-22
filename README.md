@@ -40,6 +40,18 @@ www.google.com (forged)  ←  weak intermediate (key = 4)  ←  root trusted bef
 | `recover_key.py` | Brute-forces the weak private key from the public key alone |
 | `mitm_demo.py` | Attacker HTTPS server + two curl victims (stale vs patched bundles) |
 
+## Test your own machine
+
+The scripts above demo with our throwaway keys. `check_client.sh` tests *your* real trust store against the operator's live test hosts:
+
+```bash
+./check_client.sh
+```
+
+The host serves a cert chaining to the compromised `EM DV TLS CA - G3B` (once via emSign, once via Sectigo's cross-sign, which Debian-family stores still trust). A patched client fails TLS verification. A stale client loads the page.
+
+Measured on this repo's machine, macOS system curl (LibreSSL, `/etc/ssl/cert.pem`) accepted both chains — `SSL certificate verify ok`, issuer `EM DV TLS CA - G3B`. Run it and see.
+
 ## Mapping to the real incident
 
 | Here | Real world |
