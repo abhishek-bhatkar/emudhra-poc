@@ -52,6 +52,15 @@ The host serves a cert chaining to the compromised `EM DV TLS CA - G3B` (once vi
 
 Measured on this repo's machine, macOS system curl (LibreSSL, `/etc/ssl/cert.pem`) accepted both chains — `SSL certificate verify ok`, issuer `EM DV TLS CA - G3B`. Run it and see.
 
+Check any URL:
+
+```bash
+./check_url.sh https://example.com/   # NOT APPLICABLE - chain has no compromised key
+./check_url.sh https://dv-g3b-emudhra.we-have-a-problem.com/   # VULNERABLE if you accept it
+```
+
+`check_url.sh` fetches the served chain, hashes every cert's SubjectPublicKeyInfo, and matches against the 8 compromised SPKI hashes (cached from the operator's `impacted-intermediates.json`). A verdict is `VULNERABLE` (chain matches and your client accepted), `SAFE` (chain matches, you rejected), `UNKNOWN` (nothing served), or `NOT APPLICABLE` (chain does not involve the keys). Exit codes: 1 vulnerable, 0 safe/not applicable, 2 unknown.
+
 ## Mapping to the real incident
 
 | Here | Real world |
