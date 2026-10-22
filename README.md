@@ -42,24 +42,13 @@ www.google.com (forged)  ←  weak intermediate (key = 4)  ←  root trusted bef
 
 ## Test your own machine
 
-The scripts above demo with our throwaway keys. `check_client.sh` tests *your* real trust store against the operator's live test hosts:
-
 ```bash
-./check_client.sh
+./check_client.sh                          # run against the incident's live test hosts
+./check_url.sh https://example.com/        # NOT APPLICABLE / SAFE / VULNERABLE / UNKNOWN
 ```
 
-The host serves a cert chaining to the compromised `EM DV TLS CA - G3B` (once via emSign, once via Sectigo's cross-sign, which Debian-family stores still trust). A patched client fails TLS verification. A stale client loads the page.
-
-Measured on this repo's machine, macOS system curl (LibreSSL, `/etc/ssl/cert.pem`) accepted both chains — `SSL certificate verify ok`, issuer `EM DV TLS CA - G3B`. Run it and see.
-
-Check any URL:
-
-```bash
-./check_url.sh https://example.com/   # NOT APPLICABLE - chain has no compromised key
-./check_url.sh https://dv-g3b-emudhra.we-have-a-problem.com/   # VULNERABLE if you accept it
-```
-
-`check_url.sh` fetches the served chain, hashes every cert's SubjectPublicKeyInfo, and matches against the 8 compromised SPKI hashes (cached from the operator's `impacted-intermediates.json`). A verdict is `VULNERABLE` (chain matches and your client accepted), `SAFE` (chain matches, you rejected), `UNKNOWN` (nothing served), or `NOT APPLICABLE` (chain does not involve the keys). Exit codes: 1 vulnerable, 0 safe/not applicable, 2 unknown.
+- `check_client.sh` curl's the operator's live hosts, which serve certs chaining to the compromised `EM DV TLS CA - G3B` (via emSign and via Sectigo's cross-sign). A patched client fails TLS verification, a stale client loads the page. Measured here, macOS system curl accepted both.
+- `check_url.sh <url>` hashes the served chain's SPKIs against the 8 compromised hashes (cached from the operator's public report). Verdict `VULNERABLE` = your chain contains a compromised key and you accept it. Exit 1 = vulnerable, 2 = unknown.
 
 ## Mapping to the real incident
 
