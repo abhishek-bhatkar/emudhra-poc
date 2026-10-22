@@ -204,6 +204,8 @@ document.getElementById("urlform").addEventListener("submit", (e) => {
   const raw = document.getElementById("url").value;
   let target;
   try {
+    // Bare hostnames are common input. Give them a scheme instead of failing.
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = "https://" + raw;
     target = new URL(raw);
     if (target.protocol !== "https:" && target.protocol !== "http:") throw new Error("bad scheme");
     if (target.origin === "null") throw new Error("null origin");
