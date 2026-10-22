@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Am I still vulnerable? (eMudhra weak-key check)</title>
+<style>
+  :root { --bg:#0e1116; --card:#161b22; --fg:#e6edf3; --muted:#8b949e; --bad:#f85149; --good:#3fb950; --warn:#d29922; --link:#58a6ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width:720px; margin:0 auto; padding:48px 20px 96px; }
+  h1 { font-size:1.7rem; margin:0 0 8px; }
+  p.sub { color:var(--muted); margin-top:0; }
+  .card { background:var(--card); border:1px solid #21262d; border-radius:10px; padding:20px 24px; margin:20px 0; }
+  .verdict { font-size:2rem; font-weight:700; letter-spacing:.5px; }
+  .verdict.vuln   { color:var(--bad); }
+  .verdict.safe   { color:var(--good); }
+  .verdict.unknown{ color:var(--warn); }
+  .verdict.pending{ color:var(--muted); font-size:1.4rem; }
+  table.probes { width:100%; border-collapse:collapse; margin-top:12px; font-size:.9rem; }
+  table.probes td { padding:6px 8px; border-top:1px solid #21262d; }
+  td.url { color:var(--muted); word-break:break-all; }
+  .prog { color:var(--muted); }
+  input[type=url] { width:100%; padding:10px 12px; font-size:1rem; border-radius:8px;
+    border:1px solid #30363d; background:#0d1117; color:var(--fg); }
+  button { margin-top:10px; padding:9px 18px; font-size:.95rem; border-radius:8px;
+    border:1px solid #30363d; background:#21262d; color:var(--fg); cursor:pointer; }
+  button:hover { background:#30363d; }
+  .note { color:var(--muted); font-size:.85rem; }
+  a { color:var(--link); }
+  code { background:#21262d; padding:1px 6px; border-radius:4px; font-size:.9em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Is your browser still exposed to the eMudhra weak-key attack?</h1>
+  <p class="sub">
+    In Oct 2026, eight eMudhra/emSign intermediate CA keys were so weak (one was literally
+    <code>4</code>) that anyone holding their public certificates could recover the private keys
+    and forge trusted certificates. Browsers that received the Emergency update reject those
+    chains. Frozen or unpatched browsers accept them. This page probes your browser against the
+    incident's live test hosts. Your own browser is the oracle.
+  </p>
+
+  <div class="card">
+    <div id="verdict" class="verdict pending">Probing…</div>
+    <div id="verdict-note" class="note"></div>
+    <table class="probes">
+      <tr><td>Control host (good chain)</td><td id="p-ctrl" class="prog">probing…</td></tr>
+      <tr><td>crt.sh (control #2, good chain)</td><td id="p-ctrl2" class="prog">probing…</td></tr>
+      <tr><td>Incident host, emSign path</td><td id="p-t1" class="prog">probing…</td></tr>
+      <tr><td>Incident host, Sectigo cross-sign path</td><td id="p-t2" class="prog">probing…</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2 style="margin:0 0 12px;font-size:1.15rem;">Check any URL</h2>
+    <form id="urlform">
+      <input id="url" type="url" placeholder="https://example.com/" required>
+      <button type="submit">Test this URL from my browser</button>
+    </form>
+    <div id="urlresult" class="prog" style="margin-top:12px;"></div>
+    <p class="note" style="margin-bottom:0;">
+      A static page cannot read another site's certificate, so this answers one question,
+      honestly: does <strong>your browser</strong> accept this URL's TLS chain. Accepted is a
+      green light for a normal site and a red flag for a test host.
+    </p>
+  </div>
+
+  <p class="note">Background:
+    <a href="https://blog.mozilla.org/security/2026/10/20/protecting-firefox-users-following-the-compromise-of-emudhra-intermediate-certificates/">Mozilla announcement</a>,
+    <a href="https://emudhra.we-have-a-problem.com/">incident page</a>,
+    <a href="https://github.com/abhishek-bhatkar/emudhra-poc">lab PoC repo</a>.
+    Fix your clients: update the OS trust store, <code>certifi</code>, <code>curl</code>,
+    <code>openssl</code>, Go, Node, curl bundles. Patches table in the Mozilla post.
+  </p>
+</main>
+<script>
+const ctrl    = "https://www.mozilla.org/en-US/favicon.ico";
+const ctrl2   = "https://crt.sh/apple-touch-icon.png";
+const t1      = "https://dv-g3b-emudhra.we-have-a-problem.com/favicon.ico";
+const t2      = "https://dv-g3b-aaa-emudhra.we-have-a-problem.com/favicon.ico";
+// Only the TLS verdict matters, so a 404 HTTP status from a real path is fine.
+const RESULTS = {};
+
+function probe(url, cellId) {
+  const cell = document.getElementById(cellId);
+  const bust = url + "?c=" + Date.now();
+  return fetch(bust, {mode: "no-cors", cache: "no-store", redirect: "follow"})
+    .then(() => { RESULTS[url] = "ok";  cell.textContent = "loaded  (TLS accepted)";  cell.style.color = "var(--fg)"; })
+    .catch(() => { RESULTS[url] = "fail"; cell.textContent = "blocked (TLS or network)"; cell.style.color = "var(--muted)"; });
+}
+
+function setVerdict(text, cls, note) {
+  const v = document.getElementById("verdict");
+  v.textContent = text;
+  v.className = "verdict " + cls;
+  document.getElementById("verdict-note").textContent = note;
+}
+
+Promise.all([probe(ctrl,"p-ctrl"), probe(ctrl2,"p-ctrl2"), probe(t1,"p-t1"), probe(t2,"p-t2")]).then(() => {
+  const ctl  = RESULTS[ctrl]  === "ok";
+  const ctl2 = RESULTS[ctrl2] === "ok";
+  const a    = RESULTS[t1]    === "ok";
+  const b    = RESULTS[t2]    === "ok";
+  if (!ctl && !ctl2)           setVerdict("UNKNOWN",  "unknown", "Both control hosts failed to load. Offline, extension, or bandwidth? Verdict has no signal.");
+  else if (a || b)             setVerdict("VULNERABLE","vuln",   "Your browser ACCEPTED a chain that chains to a compromised eMudhra intermediate. Update your OS/browser trust store.");
+  else                         setVerdict("SAFE",     "safe",   "Your browser rejected the compromised chains. Good. This is one clip of time; browsers may still re-evaluate trust as updates land.");
+});
+
+document.getElementById("urlform").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const out = document.getElementById("urlresult");
+  const raw = document.getElementById("url").value;
+  let target;
+  try { target = new URL(raw); if (target.protocol !== "https:") { target.protocol = "https:"; } }
+  catch { out.innerHTML = '<span class="verdict unknown">UNKNOWN</span> — not a valid URL'; out.className=""; return; }
+  out.textContent = "Probing " + target.origin + "…";
+  fetch(target.origin + "/favicon.ico?c=" + Date.now(), {mode: "no-cors", cache: "no-store"})
+    .then(() => { out.innerHTML = '<span style="color:var(--good);font-weight:600;">TLS ACCEPTED</span> — your browser trusted this server\'s chain. For a normal site that is just fine.'; out.className=""; })
+    .catch(() => { out.innerHTML = '<span style="color:var(--bad);font-weight:600;">BLOCKED</span> — TLS or network failure. Normal for a broken cert; also happens offline.'; out.className=""; });
+});
+</script>
+</body>
+</html>
