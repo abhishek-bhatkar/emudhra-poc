@@ -15,7 +15,7 @@ import crypto from "node:crypto";
 // come back as an error, and the page shows UNKNOWN rather than any green.
 
 export default {
-  async fetch(req) {
+  async fetch(req, env, ctx) {
     const cors = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -33,6 +33,13 @@ export default {
       return json({ error: "bad host" }, 400, cors);
     if (port < 1 || port > 65535) return json({ error: "bad port" }, 400, cors);
 
+    // One probe per host per minute. A spike in traffic for one host is one
+    // handshake, not one handshake per visitor; error and success paths both
+    // need the full original URL as cache key.
+    const cache = await caches.open("chain");
+    const hit = await cache.match(req);
+    if (hit) return hit;
+
     try {
       const certs = await servedChainFirst(host, port, 12000);
       const chain = certs.map((der) => {
@@ -47,12 +54,19 @@ export default {
         } catch {}
         return { spki_sha256: spki, subject_cn: cn };
       });
-      return json({ host, chain }, 200, cors);
+      return cacheable(json({ host, chain }, 200, cors), req, cache, ctx);
     } catch (e) {
-      return json({ host, error: String((e && e.message) || e) }, 502, cors);
+      return cacheable(json({ host, error: String((e && e.message) || e) }, 502, cors), req, cache, ctx);
     }
   },
 };
+
+function cacheable(res, req, cache, ctx) {
+  const body = res.clone();
+  res.headers.append("Cache-Control", "public, max-age=60");
+  ctx.waitUntil(cache.put(req, body));
+  return res;
+}
 
 function json(obj, status, cors) {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...cors } });
