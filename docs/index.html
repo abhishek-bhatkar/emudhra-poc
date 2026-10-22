@@ -74,6 +74,12 @@
   #urlresult b.v-ok { color:var(--good); font-weight:700; }
   #urlresult b.v-no { color:var(--bad); font-weight:700; }
   #urlresult b.v-unk{ color:var(--warn); font-weight:700; }
+  .sector { display:grid; max-width:520px; margin-top:12px; }
+  .sector .fact { font:13px var(--mono); color:var(--muted); padding:9px 0; border-top:1px solid var(--line); }
+  .sector .fact b { font-weight:700; }
+  .sector .fact b.t { color:var(--bad); } .sector .fact b.f { color:var(--good); }
+  .sector .fact b.u { color:var(--warn); }
+
   .caveat { color:var(--dim); font-size:12.5px; margin-top:14px; }
 
   /* footer */
@@ -132,7 +138,7 @@
       <button type="submit">Probe TLS</button>
     </form>
     <div id="urlresult"></div>
-    <p class="caveat">A static page can't read cert bytes. This shows whether <b>your browser</b> accepted the TLS chain.</p>
+    <p class="caveat">Probed from your browser and from a Cloudflare worker. The worker reads the chain your browser cannot.</p>
   </section>
 
   <footer>
@@ -152,6 +158,10 @@ const t1      = "https://dv-g3b-emudhra.we-have-a-problem.com/favicon.ico";
 const t2      = "https://dv-g3b-aaa-emudhra.we-have-a-problem.com/favicon.ico";
 // Only the TLS verdict matters, so a 404 HTTP status from a real path is fine.
 const RESULTS = {};
+// Set after `npx wrangler deploy` in worker/. Empty string degrades to browser-only probing.
+const WORKER_URL = "";
+// SPKI SHA-256 of the eight compromised eMudhra intermediates, from the operator's report.
+const compromised = new Set([]);
 
 function probe(url, cellId) {
   const cell = document.getElementById(cellId);
@@ -191,12 +201,38 @@ document.getElementById("urlform").addEventListener("submit", (e) => {
     if (target.protocol === "http:") { target.protocol = "https:"; }
   }
   catch { out.innerHTML = '<b class="v-unk">UNKNOWN</b> use a normal http(s) URL'; return; }
-  out.textContent = "probing " + target.origin + "…";
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 15000);
-  fetch(target.origin + "/favicon.ico?c=" + Date.now(), {mode: "no-cors", cache: "no-store", signal: ctl.signal})
-    .then(() => { clearTimeout(timer); out.innerHTML = '<b class="v-ok">TLS ACCEPTED</b>'; })
-    .catch(() => { clearTimeout(timer); out.innerHTML = '<b class="v-no">BLOCKED</b> <span style="color:var(--dim)">TLS rejected or no route</span>'; });
+
+  const fact = (label) => { const d = document.createElement("div"); d.className = "fact"; d.innerHTML = "<b>" + label + " </b><span>p…</span>"; return d; };
+  const board = document.createElement("div");
+  board.className = "sector";
+  out.innerHTML = ""; out.appendChild(board);
+  const chainRow = fact("chain:");
+  const browRow = fact("browser:");
+  board.appendChild(browRow); if (WORKER_URL) board.appendChild(chainRow);
+  const setRow = (row, html) => { row.querySelector("span").innerHTML = html; };
+  setRow(browRow, "probing…");
+
+  // 1. Does the served chain contain a compromised key? (worker fact)
+  if (WORKER_URL) {
+    const wc = new AbortController();
+    const wt = setTimeout(() => wc.abort(), 20000);
+    fetch(WORKER_URL + "?host=" + encodeURIComponent(target.hostname), {signal: wc.signal})
+      .then(r => r.json())
+      .then(j => {
+        clearTimeout(wt);
+        const hashes = (j.chain || []).map(c => c.spki_sha256).filter(Boolean);
+        const hit = hashes.some(h => compromised.has(h));
+        setRow(chainRow, hit ? '<b class="t">CONTAINS a compromised key</b>' : (j.error ? '<b class="u">no signal</b> ' + j.error : '<b class="f">clean</b>'));
+      })
+      .catch(() => { clearTimeout(wt); setRow(chainRow, '<b class="u">no signal</b> worker unreachable'); });
+  }
+
+  // 2. Does this browser accept the chain?
+  const acl = new AbortController();
+  const atimer = setTimeout(() => acl.abort(), 15000);
+  fetch(target.origin + "/favicon.ico?c=" + Date.now(), {mode: "no-cors", cache: "no-store", signal: acl.signal})
+    .then(() => { clearTimeout(atimer); setRow(browRow, '<b style="color:var(--good)">TLS ACCEPTED</b>'); })
+    .catch(() => { clearTimeout(atimer); setRow(browRow, '<b style="color:var(--bad)">BLOCKED</b> <span style="color:var(--dim)">TLS rejected or no route</span>'); });
 });
 </script>
 </body>
