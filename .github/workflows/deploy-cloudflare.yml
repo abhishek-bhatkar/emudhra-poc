@@ -1,0 +1,37 @@
+# Deploys the static site (docs/) to the Cloudflare Workers asset site.
+# GitHub Pages updates itself from main; this workflow keeps the Workers
+# mirror current on the same merges. Needs repo secrets:
+#   CLOUDFLARE_API_TOKEN   token with Account > Workers Scripts > Edit
+#   CLOUDFLARE_ACCOUNT_ID  your account
+name: Deploy site to Cloudflare Workers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "worker/wrangler.site.toml"
+      - ".github/workflows/deploy-cloudflare.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-workers-site
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install --location=global wrangler@4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy -c worker/wrangler.site.toml
+          wranglerVersion: "4"
+        env:
+          npm_config_yes: "true"
