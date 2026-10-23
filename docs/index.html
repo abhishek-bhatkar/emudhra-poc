@@ -46,11 +46,16 @@
   .row { display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:16px; align-items:center;
          padding:14px 0; border-bottom:1px solid var(--line); }
   .row .host { font-family:var(--mono); font-size:13px; color:var(--muted); overflow-wrap:anywhere; }
-  .row.ok .host { color:var(--fg); }
-  .row .st   { font-family:var(--mono); font-size:12.5px; text-align:right; color:var(--dim); }
-  .row.ok .st  { color:var(--good); }
-  .row.no .st  { color:var(--muted); }
-  @media (max-width:640px){ .row { grid-template-columns:minmax(0,1fr); gap:4px; } .row .st { text-align:left; } }
+  .row .st { font-family:var(--mono); font-size:11.5px; font-weight:600; letter-spacing:.06em; text-align:right; color:var(--dim); padding:1px 9px; border:1px solid; border-radius:999px; justify-self:end; }
+  /* Unmarked rows read as test rows: .ok is the bad result, the browser accepted
+     a compromised chain. The plain test mapping also matches .ctrl rows; these
+     higher-specificity overrides flip it to the control mapping. .ok/.no hold the
+     probe outcome, not the verdict. */
+  .row.ok .st      { color:var(--bad);  background:color-mix(in srgb, var(--bad) 12%, transparent); }
+  .row.no .st      { color:var(--good); background:color-mix(in srgb, var(--good) 12%, transparent); }
+  .row.ctrl.ok .st { color:var(--good); background:color-mix(in srgb, var(--good) 12%, transparent); }
+  .row.ctrl.no .st { color:var(--warn); background:color-mix(in srgb, var(--warn) 12%, transparent); }
+  @media (max-width:640px){ .row { grid-template-columns:minmax(0,1fr); gap:4px; } .row .st { text-align:left; justify-self:start; } }
 
   /* verdict block */
   .verdict-box { padding:36px 0 8px; }
@@ -130,20 +135,20 @@
     <div class="verdict-box">
       <div id="verdict" class="verdict pending">PROBING…</div>
     </div>
-    <div class="row">
+    <div class="row ctrl">
       <div class="host">www.mozilla.org <span style="color:var(--dim)">/ control</span></div>
       <div class="st" id="p-ctrl">probing…</div>
     </div>
-    <div class="row">
+    <div class="row ctrl">
       <div class="host">crt.sh <span style="color:var(--dim)">/ control</span></div>
       <div class="st" id="p-ctrl2">probing…</div>
     </div>
     <div class="row">
-      <div class="host">dv-g3b-emudhra.we-have-a-problem.com</div>
+      <div class="host">dv-g3b-emudhra.we-have-a-problem.com <span style="color:var(--dim)">/ test</span></div>
       <div class="st" id="p-t1">probing…</div>
     </div>
     <div class="row">
-      <div class="host">dv-g3b-aaa-emudhra.we-have-a-problem.com</div>
+      <div class="host">dv-g3b-aaa-emudhra.we-have-a-problem.com <span style="color:var(--dim)">/ test</span></div>
       <div class="st" id="p-t2">probing…</div>
     </div>
   </section>
@@ -196,9 +201,17 @@ function probe(url, cellId) {
   const bust = url + "?c=" + Date.now();
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 15000);
+  const setState = (s) => { const row = cell.closest(".row"); row.classList.remove("ok", "no"); if (s) row.classList.add(s); };
   return fetch(bust, {mode: "no-cors", cache: "no-store", redirect: "follow", signal: ctl.signal})
-    .then(() => { clearTimeout(timer); RESULTS[url] = "ok";  cell.textContent = "LOADED";  cell.className = "st ok"; })
-    .catch(() => { clearTimeout(timer); RESULTS[url] = "fail"; cell.textContent = "BLOCKED"; cell.className = "st no"; });
+    .then(() => { clearTimeout(timer); RESULTS[url] = "ok";  cell.textContent = "LOADED";  setState("ok"); })
+    .catch(() => {
+      clearTimeout(timer);
+      if (ctl.signal.aborted) {
+        RESULTS[url] = "nosignal"; cell.textContent = "NO RESPONSE"; setState("");
+        return;
+      }
+      RESULTS[url] = "fail"; cell.textContent = "BLOCKED"; setState("no");
+    });
 }
 
 function setVerdict(text, cls) {
@@ -212,9 +225,11 @@ Promise.all([probe(ctrl,"p-ctrl"), probe(ctrl2,"p-ctrl2"), probe(t1,"p-t1"), pro
   const ctl2 = RESULTS[ctrl2] === "ok";
   const a    = RESULTS[t1]    === "ok";
   const b    = RESULTS[t2]    === "ok";
-  if (!ctl && !ctl2)           setVerdict("UNKNOWN",  "unknown");
-  else if (a || b)             setVerdict("VULNERABLE","vuln");
-  else                         setVerdict("SAFE",     "safe");
+  // A rejection is evidence only if a control loaded; a timeout is never evidence.
+  if (!ctl && !ctl2)              setVerdict("UNKNOWN",  "unknown");
+  else if (a || b)                setVerdict("VULNERABLE","vuln");
+  else if (RESULTS[t1] === "fail" && RESULTS[t2] === "fail") setVerdict("SAFE", "safe");
+  else                            setVerdict("UNKNOWN",  "unknown");
 });
 
 document.getElementById("urlform").addEventListener("submit", (e) => {
