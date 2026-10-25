@@ -14,7 +14,7 @@ Recreation of the [October 2026 eMudhra/emSign CA incident](https://blog.mozilla
 pip install cryptography && ./run_demo.sh
 ```
 
-The two check scripts need Python 3, OpenSSL, and curl 7.88 or newer with a TLS backend that supports the `%{certs}` write-out variable. They make one curl transfer per target. Backend support differs: some curl TLS backends omit certificate PEMs when a handshake is rejected. In that case the result is UNKNOWN because the rejected chain cannot be matched to the incident list from the same transfer. Both scripts read the checked-in SPKI list at `docs/data/incident.json`; they do not download or cache a replacement list.
+The two check scripts need Python 3, OpenSSL, and curl 7.88 or newer with a TLS backend that supports the `%{certs}` write-out variable. They make one curl transfer per target. Backend support differs: some curl TLS backends, including macOS system curl in some configurations, omit certificate PEMs when a handshake is rejected. In that case the result is UNKNOWN because the rejected chain cannot be matched to the incident list from the same transfer; SAFE requires the backend to expose that chain. Both scripts read the checked-in SPKI list at `docs/data/incident.json`; they do not download or cache a replacement list.
 
 The lab uses `cryptography` to create its throwaway certificates. The check scripts use Python's standard library and OpenSSL.
 
@@ -60,7 +60,7 @@ The browser cannot read certificate bytes, so the Cloudflare Worker speaks TLS 1
 
 The Worker configures an IP-keyed Cloudflare Rate Limiting binding for 30 cache-miss probes per minute. Cloudflare describes these limits as approximate and per location. An [open Workers SDK report](https://github.com/cloudflare/workers-sdk/issues/16097) describes a live binding that did not enforce its threshold; this project has not verified live enforcement, so treat the binding as best-effort abuse control rather than a strict cap. Users behind the same NAT may share a bucket. Cache misses fail closed with HTTP 503 if the binding is unavailable. The Worker allows browser requests only from the configured site origins. CORS does not authenticate direct API callers.
 
-The GitHub Actions workflow deploys both the site and the probe Worker with Wrangler 4.69.0 when site or Worker files change. GitHub Pages continues to deploy from `main`.
+The GitHub Actions workflow deploys both the site and the probe Worker with Wrangler 4.152.0 when site or Worker files change. GitHub Pages continues to deploy from `main`.
 
 ## Mapping to the real incident
 

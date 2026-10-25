@@ -111,6 +111,28 @@ def parse_target(raw):
     return Target(url=url)
 
 
+def valid_dns_name(value):
+    if not isinstance(value, str) or not value:
+        return False
+    hostname = value[:-1] if value.endswith(".") else value
+    try:
+        hostname = hostname.encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        return False
+    labels = hostname.split(".")
+    if len(hostname) > 253 or len(labels) < 2:
+        return False
+    if len(labels) <= 4 and all(label.isdecimal() or label.startswith("0x") for label in labels):
+        return False
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        return False
+    return all(HOST_LABEL.fullmatch(label) for label in labels)
+
+
 def load_incident():
     try:
         data = json.loads(INCIDENT_FILE.read_text(encoding="utf-8"))
@@ -120,7 +142,6 @@ def load_incident():
     hashes = data.get("spki_sha256") if isinstance(data, dict) else None
     expected_count = data.get("spki_count") if isinstance(data, dict) else None
     incident_hosts = data.get("incident_hosts") if isinstance(data, dict) else None
-    control_hosts = data.get("control_hosts") if isinstance(data, dict) else None
     if type(expected_count) is not int or expected_count < 1:
         raise ValueError("incident data has an invalid SPKI count")
     if not isinstance(hashes, list) or len(hashes) != expected_count:
@@ -131,8 +152,8 @@ def load_incident():
         raise ValueError("incident data contains an invalid or duplicate SPKI hash")
     if not isinstance(incident_hosts, list) or not incident_hosts:
         raise ValueError("incident data has no incident hosts")
-    if not isinstance(control_hosts, list) or not control_hosts:
-        raise ValueError("incident data has no control hosts")
+    if any(not valid_dns_name(host) for host in incident_hosts):
+        raise ValueError("incident data contains an invalid incident host")
     return {
         "hashes": frozenset(hashes),
         "incident_hosts": tuple(incident_hosts),
@@ -215,12 +236,16 @@ def inspect(target, hashes):
     blocks = CERTIFICATE_BLOCK.findall(result.stdout)
     if not blocks:
         detail = curl_detail(result.stderr)
-        if result.returncode == 60:
+        if result.returncode not in (0, 60):
+            reason = "curl transfer failed (exit " + str(result.returncode) + ")"
+        elif result.returncode == 60:
             reason = "curl rejected TLS but exposed no certificate PEMs from this transfer; this backend may omit %{certs} for rejected handshakes, so the compromised-key status is UNKNOWN"
         else:
             reason = "curl returned no certificate PEMs from this transfer; use curl 7.88 or newer with a TLS backend that supports %{certs}"
         if detail:
-            reason += " (" + detail + ")"
+            reason += (": " if result.returncode not in (0, 60) else " (") + detail
+            if result.returncode in (0, 60):
+                reason += ")"
         return Finding(target, Verdict.UNKNOWN, reason, (), result.returncode)
 
     certificates = tuple(certificate_fact(index, block + b"\n") for index, block in enumerate(blocks, 1))

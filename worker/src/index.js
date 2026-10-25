@@ -2,6 +2,8 @@ import { connect } from "cloudflare:sockets";
 import crypto from "node:crypto";
 
 const PROBE_BUDGET_MS = 15000;
+const PROBE_ATTEMPT_MS = 5000;
+const DNS_LOOKUP_MS = 3000;
 const MAX_TLS_RECORD_LENGTH = 18432;
 const MAX_HANDSHAKE_BYTES = 256 * 1024;
 const MAX_DOH_ADDRESSES = 8;
@@ -104,7 +106,7 @@ function parseProbeQuery(url) {
   if (ports.length > 1) return { error: "provide one port" };
 
   const host = hosts[0].toLowerCase().replace(/\.$/, "");
-  if (host.startsWith("[") || host.includes(":") || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host))
+  if (host.startsWith("[") || host.includes(":") || isIpLiteral(host))
     return { error: "host must be a DNS name; IP literals are not supported" };
   if (host.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(host))
     return { error: "host must be a fully qualified DNS name" };
@@ -116,6 +118,15 @@ function parseProbeQuery(url) {
     if (port < 1 || port > 65535) return { error: "bad port" };
   }
   return { host, port };
+}
+
+function isIpLiteral(host) {
+  try {
+    const normalized = new URL("https://" + host + "/").hostname;
+    return normalized.includes(":") || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(normalized);
+  } catch {
+    return true;
+  }
 }
 
 async function checkRateLimit(req, env) {
@@ -139,7 +150,7 @@ async function probeWithDnsFallback(host, port, timeoutMs) {
   const withHostnameFailure = (detail) =>
     "hostname probe failed: " + errorMessage(hostnameError) + "; " + detail;
   try {
-    return await probe(host, port, remainingMs(deadline), host);
+    return await probe(host, port, Math.min(remainingMs(deadline), PROBE_ATTEMPT_MS), host);
   } catch (error) {
     if (!(error instanceof TcpConnectError)) throw error;
     hostnameError = error;
@@ -147,7 +158,7 @@ async function probeWithDnsFallback(host, port, timeoutMs) {
 
   let addresses;
   try {
-    addresses = await resolveA(host, remainingMs(deadline));
+    addresses = await resolveA(host, Math.min(remainingMs(deadline), DNS_LOOKUP_MS));
   } catch (error) {
     if (error instanceof ProbeTimeoutError) throw error;
     throw new Error(withHostnameFailure("A-record lookup failed: " + errorMessage(error)));
@@ -158,13 +169,14 @@ async function probeWithDnsFallback(host, port, timeoutMs) {
   const connectErrors = [];
   for (const ip of addresses) {
     try {
-      return await probe(ip, port, remainingMs(deadline), host);
+      return await probe(ip, port, Math.min(remainingMs(deadline), PROBE_ATTEMPT_MS), host);
     } catch (error) {
       if (error instanceof ProbeTimeoutError) throw error;
       if (!(error instanceof TcpConnectError)) {
         throw new Error(withHostnameFailure("resolved-IP TLS probe failed: " + errorMessage(error)));
       }
       connectErrors.push(ip + ": " + errorMessage(error));
+      if (Date.now() >= deadline) throw new ProbeTimeoutError("probe timed out");
     }
   }
   throw new Error(withHostnameFailure("resolved-IP connects failed: " + connectErrors.join("; ")));
@@ -241,9 +253,10 @@ async function probe(target, port, timeoutMs, sni) {
     try {
       await socket.opened;
     } catch (error) {
-      if (timedOut) throw new ProbeTimeoutError("probe timed out");
+      if (timedOut) throw new TcpConnectError("tcp connect timed out");
       throw new TcpConnectError("tcp connect failed: " + errorMessage(error));
     }
+    if (timedOut) throw new TcpConnectError("tcp connect timed out");
     try {
       await writer.write(clientHello(sni));
     } catch (error) {
@@ -276,7 +289,12 @@ async function probe(target, port, timeoutMs, sni) {
         if (off + 5 + len > stream.length) break;    // body split across chunks
         if (type === 21) {
           if (len < 2) throw new Error("truncated TLS alert");
-          throw new Error("tls alert " + ((stream[off + 5] << 8) | stream[off + 6]));
+          const level = stream[off + 5];
+          const description = stream[off + 6];
+          const levelName = level === 1 ? "warning" : level === 2 ? "fatal" : "unknown level";
+          const descriptionName = ({ 40: "handshake_failure", 70: "protocol_version" })[description] || "unknown alert";
+          throw new Error("TLS alert " + levelName + " " + descriptionName
+            + " (level " + level + ", description " + description + ")");
         }
         if (type === 22) {
           const fragment = stream.subarray(off + 5, off + 5 + len);
@@ -335,9 +353,9 @@ function concat(a, b) {
   return out;
 }
 
-// Minimal TLS 1.2 ClientHello: SNI, eight ECDHE AES-GCM suites, three curves,
-// eight signature algos, and uncompressed EC point format. Fixed sizes;
-// server_name carries one hostname.
+// Minimal TLS 1.2 ClientHello: SNI, eight common cipher suites, three groups,
+// eight signature algorithms, and uncompressed EC points. server_name carries
+// one hostname.
 function clientHello(host) {
   const name = ascii(host);
   // server_name extension body: u16 listLen(3+name), u8 nametype 0, u16 nameLen, name

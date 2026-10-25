@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 env:
-  WRANGLER_VERSION: "4.69.0"
+  WRANGLER_VERSION: "4.152.0"
 
 jobs:
   deploy-probe:
