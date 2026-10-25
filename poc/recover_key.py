@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""
-Step 2 -- Prove the key recovery is trivial.
-
-Given ONLY the public key of the "compromised" intermediate CA, brute-force
-the private scalar by multiplying the generator by candidate scalars until
-the resulting point matches the public key.
-
-This is exactly the technique available against the real eMudhra/emSign
-intermediates: insufficient randomness during key generation produced
-private scalars so small that recovery takes seconds on a laptop. In the
-real incident, a researcher (credited as "Wayne") proved possession of all
-eight keys by signing the message 'We have a problem here - Wayne'.
-
-Optional: --bits N demos recovery of a larger weak scalar to show how far
-up the range 'trivially weak' extends (32 bits still falls in seconds).
-"""
-
 import argparse
 import os
 import sys
@@ -24,7 +7,10 @@ import time
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from weak_ec import G, N, scalar_mul
+from weak_ec import G, bsgs, scalar_mul
+
+MAX_TRIVIAL_SCALAR_BITS = 24
+MAX_DEMO_BITS = 32
 
 
 def load_pub_point(cert_path):
@@ -44,11 +30,13 @@ def main():
     ap.add_argument("--bits", type=int, default=0, help="demo with a random weak scalar of this bit size instead of the scalar-4 key")
     ap.add_argument("--cert", default=cert_path)
     args = ap.parse_args()
+    if args.bits < 0 or args.bits > MAX_DEMO_BITS:
+        ap.error("--bits must be between 0 and {}".format(MAX_DEMO_BITS))
 
     if args.bits:
         import random
 
-        d = random.getrandbits(args.bits) | 1
+        d = random.getrandbits(args.bits - 1) | (1 << (args.bits - 1))
         print(f"[*] Simulating an intermediate whose scalar is only {args.bits} bits (d = {d})")
         target = scalar_mul(d, G)
         bound = 1 << args.bits
@@ -56,21 +44,18 @@ def main():
         print("[*] Loading public key of the 'compromised' intermediate from")
         print(f"    {os.path.relpath(args.cert)}")
         target = load_pub_point(args.cert)
-        bound = 1 << 24  # we only expect pathologically small scalars
+        bound = 1 << MAX_TRIVIAL_SCALAR_BITS
 
-    print("[*] Brute-forcing private scalar: candidate d -> d*G == public key ?")
+    print("[*] Searching for private scalar: candidate d -> d*G == public key ?")
     t0 = time.perf_counter()
-    found = None
-    for d in range(1, bound):
-        if scalar_mul(d, G) == target:
-            found = d
-            break
+    found = bsgs(target, bound)
     dt = time.perf_counter() - t0
     if found is None:
-        print(f"[-] Not found under 2^{max(args.bits, 24)} after {dt:.2f}s")
+        print(f"[-] Not found under 2^{max(args.bits, MAX_TRIVIAL_SCALAR_BITS)} after {dt:.2f}s")
         return 1
     print(f"[+] PRIVATE KEY RECOVERED: d = {found}   (0x{found:x})")
-    print(f"[+] recovered in {dt:.3f} seconds on this laptop, using only the PUBLIC key")
+    print(f"[+] recovered in {dt:.3f} seconds using baby-step giant-step from the PUBLIC key")
+    print("[+] Search cost is O(sqrt(bound)) operations and memory; 32 bits needs about 2 x 2^16 point operations.")
     print("[+] An attacker can now sign fraudulent certificates with this CA key.")
     return 0
 

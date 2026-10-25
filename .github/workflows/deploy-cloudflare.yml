@@ -1,15 +1,16 @@
-# Deploys the static site (docs/) to the Cloudflare Workers asset site.
-# GitHub Pages updates itself from main; this workflow keeps the Workers
-# mirror current on the same merges. Needs repo secrets:
+# Add these repository secrets:
 #   CLOUDFLARE_API_TOKEN   token with Account > Workers Scripts > Edit
 #   CLOUDFLARE_ACCOUNT_ID  your account
-name: Deploy site to Cloudflare Workers
+name: Deploy Cloudflare Workers
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - "docs/**"
+      - "worker/src/**"
+      - "worker/wrangler.toml"
       - "worker/wrangler.site.toml"
       - ".github/workflows/deploy-cloudflare.yml"
   workflow_dispatch:
@@ -17,21 +18,34 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: cloudflare-workers-site
-  cancel-in-progress: false
+env:
+  WRANGLER_VERSION: "4.69.0"
 
 jobs:
-  deploy:
+  deploy-probe:
     runs-on: ubuntu-latest
+    concurrency:
+      group: cloudflare-chain-probe
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-      - run: npm install --location=global wrangler@4
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: ${{ env.WRANGLER_VERSION }}
+          command: deploy -c worker/wrangler.toml
+
+  deploy-site:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: cloudflare-workers-site
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: ${{ env.WRANGLER_VERSION }}
           command: deploy -c worker/wrangler.site.toml
-          wranglerVersion: "4"
-        env:
-          npm_config_yes: "true"
