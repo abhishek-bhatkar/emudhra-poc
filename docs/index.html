@@ -20,7 +20,6 @@
   }
   .wrap { max-width:880px; margin:0 auto; padding:0 24px 96px; }
 
-  /* top strip */
   header.top {
     border-bottom:1px solid var(--line);
     font-family:var(--mono); font-size:12px; color:var(--dim);
@@ -31,7 +30,6 @@
   .sig { letter-spacing:.04em; }
   .sig b { color:var(--fg); font-weight:600; }
 
-  /* hero */
   .hero { padding:64px 0 40px; }
   h1 { font-size:clamp(30px,5vw,44px); line-height:1.08; font-weight:700; letter-spacing:-0.02em; margin:0 0 16px; max-width:16ch; position:relative; }
 
@@ -41,31 +39,27 @@
   .hero p b { color:var(--fg); font-weight:600; }
   .hero p code { font-family:var(--mono); font-size:.85em; background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
 
-  /* probe runway */
   .board { border-top:1px solid var(--line-strong); }
   .row { display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:16px; align-items:center;
          padding:14px 0; border-bottom:1px solid var(--line); }
   .row .host { font-family:var(--mono); font-size:13px; color:var(--muted); overflow-wrap:anywhere; }
+  .row .kind { color:var(--dim); }
+  .row .chain-detail { display:block; margin-top:5px; color:var(--warn); font:11px var(--mono); overflow-wrap:anywhere; }
   .row .st { font-family:var(--mono); font-size:11.5px; font-weight:600; letter-spacing:.06em; text-align:right; color:var(--dim); padding:1px 9px; border:1px solid; border-radius:999px; justify-self:end; }
-  /* Unmarked rows read as test rows: .ok is the bad result, the browser accepted
-     a compromised chain. The plain test mapping also matches .ctrl rows; these
-     higher-specificity overrides flip it to the control mapping. .ok/.no hold the
-     probe outcome, not the verdict. */
-  .row.ok .st      { color:var(--bad);  background:color-mix(in srgb, var(--bad) 12%, transparent); }
-  .row.no .st      { color:var(--good); background:color-mix(in srgb, var(--good) 12%, transparent); }
-  .row.ctrl.ok .st { color:var(--good); background:color-mix(in srgb, var(--good) 12%, transparent); }
-  .row.ctrl.no .st { color:var(--warn); background:color-mix(in srgb, var(--warn) 12%, transparent); }
+  .row.test.accepted .st { color:var(--bad); background:color-mix(in srgb, var(--bad) 12%, transparent); }
+  .row.test.blocked .st, .row.control.blocked .st { color:var(--warn); background:color-mix(in srgb, var(--warn) 12%, transparent); }
+  .row.test.timeout .st, .row.control.timeout .st { color:var(--warn); background:color-mix(in srgb, var(--warn) 12%, transparent); }
+  .row.control.accepted .st { color:var(--good); background:color-mix(in srgb, var(--good) 12%, transparent); }
   @media (max-width:640px){ .row { grid-template-columns:minmax(0,1fr); gap:4px; } .row .st { text-align:left; justify-self:start; } }
 
-  /* verdict block */
   .verdict-box { padding:36px 0 8px; }
   .verdict { font-family:var(--mono); font-size:clamp(24px,4vw,34px); font-weight:700; letter-spacing:.02em; }
   .verdict.pending { color:var(--dim); }
   .verdict.vuln   { color:var(--bad); }
-  .verdict.safe   { color:var(--good); }
   .verdict.unknown{ color:var(--warn); }
+  .verdict.na { color:var(--muted); }
+  .verdict-detail { color:var(--muted); max-width:72ch; font-size:14px; }
 
-  /* URL card */
   .urlcard { margin-top:56px; border:1px solid var(--line-strong); border-radius:12px; background:var(--panel); padding:24px 24px 20px; }
   .urlcard h2 { margin:0 0 14px; font-size:17px; font-weight:600; letter-spacing:-0.01em; }
   .inlocal { display:flex; gap:10px; flex-wrap:wrap; }
@@ -79,24 +73,21 @@
     transition:transform .12s cubic-bezier(.16,1,.3,1); }
   button:active { transform:scale(.98); }
   #urlresult { margin-top:12px; font-family:var(--mono); font-size:13px; color:var(--muted); min-height:1.5em; overflow-wrap:anywhere; }
-  #urlresult b.v-ok { color:var(--good); font-weight:700; }
-  #urlresult b.v-no { color:var(--bad); font-weight:700; }
-  #urlresult b.v-unk{ color:var(--warn); font-weight:700; }
+  #urlresult b.v-unk { color:var(--warn); font-weight:700; }
   .sector { display:grid; max-width:520px; margin-top:12px; }
   .sector .fact { font:13px var(--mono); color:var(--muted); padding:9px 0; border-top:1px solid var(--line); }
   .sector .fact b { font-weight:700; }
-  .sector .fact b.t { color:var(--bad); } .sector .fact b.f { color:var(--good); }
-  .sector .fact b.u { color:var(--warn); }
+  .sector .fact span.compromised { color:var(--bad); }
+  .sector .fact span.clean { color:var(--good); }
+  .sector .fact span.unknown { color:var(--warn); }
 
   .caveat { color:var(--dim); font-size:12.5px; margin-top:14px; }
 
-  /* footer */
   footer { margin-top:64px; padding-top:20px; border-top:1px solid var(--line); color:var(--muted); font-size:13.5px; }
   footer a { color:var(--muted); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--line-strong); }
   footer a:hover { color:var(--fg); }
   footer .fix { margin-top:10px; font-family:var(--mono); font-size:12.5px; color:var(--dim); }
 
-  /* hacker mode */
   h1 { text-shadow:0 0 22px rgba(64,240,140,.28), 0 0 3px rgba(64,240,140,.3); }
   .verdict { text-shadow:0 0 22px currentColor; }
   .verdict.pending { text-shadow:none; }
@@ -123,41 +114,28 @@
 <div class="wrap">
 
   <section class="hero">
-    <h1>Did your browser become immune to the weak-key CA attack?<piix-pal pal="bitbug"></piix-pal></h1>
+    <h1>Does your browser accept a compromised chain?<piix-pal pal="bitbug"></piix-pal></h1>
     <p>
-      Eight eMudhra intermediate CA keys were so weak (one was literally <code>4</code>) that
-      anyone could recover them and forge trusted certificates. <b>Patched browsers reject those
-      chains.</b>
+      The eMudhra intermediate CA keys were so weak (one was literally <code>4</code>) that
+      anyone could recover them and forge trusted certificates. The page compares browser requests
+      with the chains observed by the probe Worker. Those are separate connections, and a failed
+      request is inconclusive.
     </p>
   </section>
 
   <section class="board" aria-label="probe results">
     <div class="verdict-box">
-      <div id="verdict" class="verdict pending">PROBING…</div>
+      <div id="verdict" class="verdict pending">CHECKING…</div>
+      <p id="verdict-detail" class="verdict-detail">A failed or timed out request cannot prove that this browser rejected the chain.</p>
     </div>
-    <div class="row ctrl">
-      <div class="host">www.mozilla.org <span style="color:var(--dim)">/ control</span></div>
-      <div class="st" id="p-ctrl">probing…</div>
-    </div>
-    <div class="row ctrl">
-      <div class="host">crt.sh <span style="color:var(--dim)">/ control</span></div>
-      <div class="st" id="p-ctrl2">probing…</div>
-    </div>
-    <div class="row">
-      <div class="host">dv-g3b-emudhra.we-have-a-problem.com <span style="color:var(--dim)">/ test</span></div>
-      <div class="st" id="p-t1">probing…</div>
-    </div>
-    <div class="row">
-      <div class="host">dv-g3b-aaa-emudhra.we-have-a-problem.com <span style="color:var(--dim)">/ test</span></div>
-      <div class="st" id="p-t2">probing…</div>
-    </div>
+    <div id="probe-board"></div>
   </section>
 
   <section class="urlcard">
     <h2>Test any URL</h2>
     <piix-pal pal="lurk"></piix-pal>
     <form id="urlform" class="inlocal">
-      <input id="url" type="text" placeholder="https://example.com/ or example.com" required aria-label="URL or hostname to test">
+      <input id="url" type="text" placeholder="https://example.com/ or example.com" required aria-label="HTTPS URL or hostname to test">
       <button type="submit">Probe TLS</button>
     </form>
     <div id="urlresult"></div>
@@ -169,115 +147,328 @@
     <a href="https://blog.mozilla.org/security/2026/10/20/protecting-firefox-users-following-the-compromise-of-emudhra-intermediate-certificates/">Mozilla announcement</a>,
     <a href="https://emudhra.we-have-a-problem.com/">incident page</a>,
     <a href="https://github.com/abhishek-bhatkar/emudhra-poc">lab PoC repo</a>.
-    Probes exit your machine: mozilla.org, crt.sh, the incident hosts.
+    Browser requests go directly from this device to mozilla.org, crt.sh, and the incident hosts. Custom chain probes run from Cloudflare. Animation scripts load from jsdelivr, and the page uses Cloudflare Web Analytics.
     <div class="fix">if vulnerable, update: OS trust store, certifi, curl, openssl, Go, Node</div>
   </footer>
 
 </div>
 
 <script>
-const ctrl    = "https://www.mozilla.org/en-US/favicon.ico";
-const ctrl2   = "https://crt.sh/apple-touch-icon.png";
-const t1      = "https://dv-g3b-emudhra.we-have-a-problem.com/favicon.ico";
-const t2      = "https://dv-g3b-aaa-emudhra.we-have-a-problem.com/favicon.ico";
-// Only the TLS verdict matters, so a 404 HTTP status from a real path is fine.
-const RESULTS = {};
-// Set after `npx wrangler deploy` in worker/. Empty string degrades to browser-only probing.
 const WORKER_URL = "https://emudhra-chain-probe.bhatkar80.workers.dev/chain";
-// SPKI SHA-256 of the eight compromised eMudhra intermediates, from the operator's report.
-const compromised = new Set([
-  "43bffa19d6ef651451f6841e019931e96f6f2eaeff28ab4b6f1ce4576de2717b",
-  "49dd353dc2b919a3770645117d0e60c16115e7d1bc259eefe734b00ea434fe5f",
-  "5c0660a2b164910d8ff589c18e14552e9e0ec237dcefe2cb736d41a4811f81a0",
-  "63ecefee431d49523bc1136c4e72d0206a477086caf606cd5cf025686c109cf8",
-  "92c063d67e8f14db71d288e11266ffdaf69cbf115f7bab14f3bc2f68d25e0e30",
-  "e0254c7fcdc265e2f0f8a428dabb75ab4ae039b4872d62f5ee57f0877d5a8a41",
-  "ebed6475c2c2d80fcb199f3fe8dd6e6b3ce60b77eb15d4e42c3dec0c6f5b5105",
-  "ec4ffa1ad0ac88081314b7aaffef6a91f97cd57291bb5ba686c5415f5eb4f6b6",
-]);
+const PROBE_STATE = Object.freeze({ACCEPTED: "accepted", BLOCKED: "blocked", TIMEOUT: "timeout"});
+const HASH_PATTERN = /^[0-9a-f]{64}$/;
+const DNS_NAME_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+const incidentDataPromise = fetch("data/incident.json", {cache: "no-store"})
+  .then((response) => {
+    if (!response.ok) throw new Error("incident data returned HTTP " + response.status);
+    return response.json();
+  })
+  .then(validateIncidentData);
 
-function probe(url, cellId) {
-  const cell = document.getElementById(cellId);
-  const bust = url + "?c=" + Date.now();
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 15000);
-  const setState = (s) => { const row = cell.closest(".row"); row.classList.remove("ok", "no"); if (s) row.classList.add(s); };
-  return fetch(bust, {mode: "no-cors", cache: "no-store", redirect: "follow", signal: ctl.signal})
-    .then(() => { clearTimeout(timer); RESULTS[url] = "ok";  cell.textContent = "LOADED";  setState("ok"); })
-    .catch(() => {
-      clearTimeout(timer);
-      if (ctl.signal.aborted) {
-        RESULTS[url] = "nosignal"; cell.textContent = "NO RESPONSE"; setState("");
-        return;
-      }
-      RESULTS[url] = "fail"; cell.textContent = "BLOCKED"; setState("no");
-    });
-}
-
-function setVerdict(text, cls) {
-  const v = document.getElementById("verdict");
-  v.textContent = text;
-  v.className = "verdict " + cls;
-}
-
-Promise.all([probe(ctrl,"p-ctrl"), probe(ctrl2,"p-ctrl2"), probe(t1,"p-t1"), probe(t2,"p-t2")]).then(() => {
-  const ctl  = RESULTS[ctrl]  === "ok";
-  const ctl2 = RESULTS[ctrl2] === "ok";
-  const a    = RESULTS[t1]    === "ok";
-  const b    = RESULTS[t2]    === "ok";
-  // A rejection is evidence only if a control loaded; a timeout is never evidence.
-  if (!ctl && !ctl2)              setVerdict("UNKNOWN",  "unknown");
-  else if (a || b)                setVerdict("VULNERABLE","vuln");
-  else if (RESULTS[t1] === "fail" && RESULTS[t2] === "fail") setVerdict("SAFE", "safe");
-  else                            setVerdict("UNKNOWN",  "unknown");
-});
-
-document.getElementById("urlform").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const out = document.getElementById("urlresult");
-  let raw = document.getElementById("url").value;
-  let target;
-  try {
-    // Bare hostnames are common input. Give them a scheme instead of failing.
-    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = "https://" + raw;
-    target = new URL(raw);
-    if (target.protocol !== "https:" && target.protocol !== "http:") throw new Error("bad scheme");
-    if (target.origin === "null") throw new Error("null origin");
-    if (target.protocol === "http:") { target.protocol = "https:"; }
+function validateIncidentData(data) {
+  if (!data || !Number.isInteger(data.spki_count) || data.spki_count < 1
+    || !Array.isArray(data.spki_sha256) || data.spki_sha256.length !== data.spki_count
+    || data.spki_sha256.some((hash) => typeof hash !== "string" || !HASH_PATTERN.test(hash))
+    || new Set(data.spki_sha256).size !== data.spki_sha256.length) {
+    throw new Error("incident data has an invalid SPKI list");
   }
-  catch { out.innerHTML = '<b class="v-unk">UNKNOWN</b> use a normal http(s) URL'; return; }
+  if (!Array.isArray(data.incident_hosts) || data.incident_hosts.length === 0
+    || !Array.isArray(data.control_hosts) || data.control_hosts.length === 0
+    || data.incident_hosts.concat(data.control_hosts).some((host) => !isDnsName(host))) {
+    throw new Error("incident data has an invalid host list");
+  }
+  return {
+    hashes: new Set(data.spki_sha256),
+    incidentHosts: data.incident_hosts,
+    controlHosts: data.control_hosts
+  };
+}
 
-  const fact = (label) => { const d = document.createElement("div"); d.className = "fact"; d.innerHTML = "<b>" + label + " </b><span>p…</span>"; return d; };
+function isDnsName(host) {
+  const normalized = typeof host === "string" ? host.toLowerCase().replace(/\.$/, "") : "";
+  return normalized.length <= 253 && DNS_NAME_PATTERN.test(normalized);
+}
+
+function makeProbeRow(host, kind) {
+  const row = document.createElement("div");
+  row.className = "row " + kind;
+  const name = document.createElement("div");
+  name.className = "host";
+  name.textContent = host;
+  const label = document.createElement("span");
+  label.className = "kind";
+  label.textContent = " / " + kind;
+  const detail = document.createElement("span");
+  detail.className = "chain-detail";
+  name.append(label, detail);
+  const status = document.createElement("div");
+  status.className = "st";
+  status.textContent = "probing…";
+  row.append(name, status);
+  return {row, status, detail};
+}
+
+function setProbeRow(probeRow, state) {
+  probeRow.row.classList.remove("accepted", "blocked", "timeout");
+  if (state === PROBE_STATE.ACCEPTED) {
+    probeRow.row.classList.add("accepted");
+    probeRow.status.textContent = "REQUEST LOADED";
+  } else if (state === PROBE_STATE.TIMEOUT) {
+    probeRow.row.classList.add("timeout");
+    probeRow.status.textContent = "TIMEOUT";
+  } else {
+    probeRow.row.classList.add("blocked");
+    probeRow.status.textContent = "NO SIGNAL";
+  }
+}
+
+async function probeBrowser(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    // TLS is the signal: a 404 or other HTTP status still proves the handshake completed.
+    await fetch(url, {
+      mode: "no-cors",
+      cache: "no-store",
+      redirect: "manual",
+      signal: controller.signal
+    });
+    return PROBE_STATE.ACCEPTED;
+  } catch {
+    return controller.signal.aborted ? PROBE_STATE.TIMEOUT : PROBE_STATE.BLOCKED;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function hasLoadedHost(results, hosts) {
+  return hosts.some((host) => results.get(host) === PROBE_STATE.ACCEPTED);
+}
+
+function setVerdict(text, state, detail) {
+  const verdict = document.getElementById("verdict");
+  verdict.textContent = text;
+  verdict.className = "verdict " + state;
+  document.getElementById("verdict-detail").textContent = detail;
+}
+
+function faviconUrl(host) {
+  const url = new URL("/favicon.ico", "https://" + host);
+  url.searchParams.set("c", String(Date.now()));
+  return url.toString();
+}
+
+async function runDashboard() {
+  let data;
+  try {
+    data = await incidentDataPromise;
+  } catch {
+    setVerdict("UNKNOWN", "unknown", "Incident data could not be loaded. No browser verdict is available.");
+    return;
+  }
+
+  const board = document.getElementById("probe-board");
+  const rows = new Map();
+  for (const host of data.controlHosts) {
+    const item = makeProbeRow(host, "control");
+    board.appendChild(item.row);
+    rows.set(host, item);
+  }
+  for (const host of data.incidentHosts) {
+    const item = makeProbeRow(host, "test");
+    board.appendChild(item.row);
+    rows.set(host, item);
+  }
+
+  const browserResults = new Map();
+  const chainResults = new Map();
+  await Promise.all([
+    ...data.controlHosts.map(async (host) => {
+      const browser = await probeBrowser(faviconUrl(host));
+      browserResults.set(host, browser);
+      setProbeRow(rows.get(host), browser);
+    }),
+    ...data.incidentHosts.map(async (host) => {
+      const [browser, chain] = await Promise.all([
+        probeBrowser(faviconUrl(host)),
+        probeWorker(new URL("https://" + host + "/"), data.hashes)
+      ]);
+      browserResults.set(host, browser);
+      chainResults.set(host, chain);
+      const row = rows.get(host);
+      setProbeRow(row, browser);
+      const chainLabel = chain.state === "compromised" ? "listed key observed"
+        : chain.state === "clean" ? "no listed key"
+        : "chain unknown";
+      row.status.textContent += " / " + chainLabel;
+      row.detail.textContent = chain.state === "unknown" ? chain.detail : "";
+    })
+  ]);
+
+  const correlatedHost = data.incidentHosts.find((host) =>
+    browserResults.get(host) === PROBE_STATE.ACCEPTED && chainResults.get(host).state === "compromised");
+  if (correlatedHost) {
+    setVerdict("VULNERABLE", "vuln", "A browser request completed and the Worker observed a listed key for "
+      + correlatedHost + ". These are separate connections, so a proxy or changing server chain can affect the correlation.");
+    return;
+  }
+
+  const allChainsClean = data.incidentHosts.every((host) => chainResults.get(host).state === "clean");
+  const incidentRequestLoaded = hasLoadedHost(browserResults, data.incidentHosts);
+  if (allChainsClean && !incidentRequestLoaded) {
+    setVerdict("NOT APPLICABLE", "na", "The Worker observed complete chains with no listed key for every incident host.");
+    return;
+  }
+
+  const controlLoaded = hasLoadedHost(browserResults, data.controlHosts);
+  const detail = incidentRequestLoaded
+    ? "A browser request completed, but no same-host compromised chain was confirmed. The browser and Worker use separate connections, so a proxy or changing server chain may explain the mismatch."
+    : controlLoaded
+      ? "Control requests completed, but the browser and chain observations did not establish a vulnerable or clean incident result. The probes use separate connections; a proxy, DNS, host change, or network block can affect either result."
+      : "No control request completed, and the incident probes did not establish a vulnerable or clean result. Failures can come from TLS rejection, DNS, a proxy, or a network block.";
+  setVerdict("UNKNOWN", "unknown", detail);
+}
+
+runDashboard();
+
+function addFact(board, label, value, tone) {
+  const row = document.createElement("div");
+  row.className = "fact";
+  const name = document.createElement("b");
+  name.textContent = label;
+  const result = document.createElement("span");
+  result.className = tone || "";
+  result.textContent = value;
+  row.append(name, document.createTextNode(" "), result);
+  board.appendChild(row);
+}
+
+function parseUserUrl(raw) {
+  let value = raw.trim();
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) value = "https://" + value;
+  const target = new URL(value);
+  if (target.protocol !== "https:") throw new Error("use an https:// URL");
+  if (target.origin === "null" || target.username || target.password) throw new Error("enter a normal HTTPS URL without credentials");
+  return target;
+}
+
+async function probeWorker(target, hashes) {
+  const url = new URL(WORKER_URL);
+  const hostname = target.hostname.toLowerCase().replace(/\.$/, "");
+  url.searchParams.set("host", hostname);
+  if (target.port) url.searchParams.set("port", target.port);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(url, {signal: controller.signal});
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      result = null;
+    }
+    if (!response.ok) throw new Error(result && typeof result.error === "string"
+      ? result.error : "worker returned HTTP " + response.status);
+    if (!result || result.ok !== true || !Array.isArray(result.chain) || result.chain.length === 0) {
+      throw new Error("worker returned no certificate chain");
+    }
+    const expectedPort = target.port ? Number(target.port) : 443;
+    if (result.host !== hostname || result.port !== expectedPort) {
+      throw new Error("worker returned a chain for a different target");
+    }
+    if (result.chain.some((certificate) => !certificate
+      || typeof certificate.spki_sha256 !== "string"
+      || !HASH_PATTERN.test(certificate.spki_sha256)
+      || typeof certificate.subject_cn !== "string")) {
+      throw new Error("worker returned incomplete certificate data");
+    }
+    const chainHashes = result.chain.map((certificate) => certificate.spki_sha256);
+    return {
+      state: chainHashes.some((hash) => hashes.has(hash)) ? "compromised" : "clean",
+      detail: ""
+    };
+  } catch (error) {
+    return {
+      state: "unknown",
+      detail: controller.signal.aborted ? "worker request timed out" : String(error.message || error)
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function showCustomResult(out, chain, browser, target) {
+  out.replaceChildren();
   const board = document.createElement("div");
   board.className = "sector";
-  out.innerHTML = ""; out.appendChild(board);
-  const chainRow = fact("chain:");
-  const browRow = fact("browser:");
-  board.appendChild(browRow); if (WORKER_URL) board.appendChild(chainRow);
-  const setRow = (row, html) => { row.querySelector("span").innerHTML = html; };
-  setRow(browRow, "probing…");
+  const chainText = chain.state === "compromised" ? "CONTAINS a compromised key"
+    : chain.state === "clean" ? "no compromised key in the served chain"
+    : "no signal" + (chain.detail ? ": " + chain.detail : "");
+  addFact(board, "chain:", chainText, chain.state === "compromised" ? "compromised" : chain.state === "clean" ? "clean" : "unknown");
+  const browserText = browser === PROBE_STATE.ACCEPTED ? "TLS ACCEPTED"
+    : browser === PROBE_STATE.TIMEOUT ? "TIMEOUT"
+    : "NO SIGNAL";
+  addFact(board, "browser:", browserText, browser === PROBE_STATE.ACCEPTED ? "" : "unknown");
 
-  // 1. Does the served chain contain a compromised key? (worker fact)
-  if (WORKER_URL) {
-    const wc = new AbortController();
-    const wt = setTimeout(() => wc.abort(), 20000);
-    fetch(WORKER_URL + "?host=" + encodeURIComponent(target.hostname), {signal: wc.signal})
-      .then(r => r.json())
-      .then(j => {
-        clearTimeout(wt);
-        const hashes = (j.chain || []).map(c => c.spki_sha256).filter(Boolean);
-        const hit = hashes.some(h => compromised.has(h));
-        setRow(chainRow, hit ? '<b class="t">CONTAINS a compromised key</b>' : (j.error ? '<b class="u">no signal</b> ' + j.error : '<b class="f">clean</b>'));
-      })
-      .catch(() => { clearTimeout(wt); setRow(chainRow, '<b class="u">no signal</b> worker unreachable'); });
+  const compromised = chain.state === "compromised";
+  if (chain.state === "clean" && browser !== PROBE_STATE.ACCEPTED) {
+    addFact(board, "verdict:", "NOT APPLICABLE", "clean");
+  } else if (compromised && browser === PROBE_STATE.ACCEPTED) {
+    addFact(board, "verdict:", "VULNERABLE", "compromised");
+  } else {
+    addFact(board, "verdict:", "UNKNOWN", "unknown");
+  }
+  out.appendChild(board);
+
+  const explanation = document.createElement("p");
+  explanation.className = "caveat";
+  if (chain.state === "clean" && browser !== PROBE_STATE.ACCEPTED) {
+    explanation.textContent = "The Worker observed a complete chain with no key from the incident list at " + target.host + ".";
+  } else if (compromised && browser === PROBE_STATE.ACCEPTED) {
+    explanation.textContent = "The Worker observed a listed key and this browser completed a request to " + target.host
+      + ". These are separate connections, so a proxy or changing server chain can affect the correlation.";
+  } else if (chain.state === "clean") {
+    explanation.textContent = "The Worker observed a clean chain, but the browser completed a separate request. The available evidence cannot correlate those connections.";
+  } else {
+    explanation.textContent = "The available probes cannot establish whether this browser accepts a compromised chain.";
+  }
+  out.appendChild(explanation);
+}
+
+document.getElementById("urlform").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const out = document.getElementById("urlresult");
+  let target;
+  try {
+    target = parseUserUrl(document.getElementById("url").value);
+  } catch (error) {
+    out.replaceChildren();
+    const message = document.createElement("b");
+    message.className = "v-unk";
+    message.textContent = "UNKNOWN - " + error.message;
+    out.appendChild(message);
+    return;
   }
 
-  // 2. Does this browser accept the chain?
-  const acl = new AbortController();
-  const atimer = setTimeout(() => acl.abort(), 15000);
-  fetch(target.origin + "/favicon.ico?c=" + Date.now(), {mode: "no-cors", cache: "no-store", signal: acl.signal})
-    .then(() => { clearTimeout(atimer); setRow(browRow, '<b style="color:var(--good)">TLS ACCEPTED</b>'); })
-    .catch(() => { clearTimeout(atimer); setRow(browRow, '<b style="color:var(--bad)">BLOCKED</b> <span style="color:var(--dim)">TLS rejected or no route</span>'); });
+  let data;
+  try {
+    data = await incidentDataPromise;
+  } catch {
+    out.replaceChildren();
+    const message = document.createElement("b");
+    message.className = "v-unk";
+    message.textContent = "UNKNOWN - incident data could not be loaded";
+    out.appendChild(message);
+    return;
+  }
+
+  out.textContent = "Probing…";
+  const [chain, browser] = await Promise.all([
+    probeWorker(target, data.hashes),
+    probeBrowser(faviconUrl(target.host))
+  ]);
+  showCustomResult(out, chain, browser, target);
 });
 </script>
 <!-- piixpal: tiny pixel pals · MIT · https://piixpal.dvkk.dev/ -->
@@ -285,14 +476,13 @@ document.getElementById("urlform").addEventListener("submit", (e) => {
 <div id="scanlines" aria-hidden="true"></div>
 <div id="vignette" aria-hidden="true"></div>
 <script>
-/* matrix rain, gutter-masked so the text column stays clean */
 (function () {
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduced) return;
   const cv = document.getElementById("rain");
   const ctx = cv.getContext("2d");
   const CH = "01अआइउकॐमयरलशस$#@=*<>+-[]{}/";
-  const FS = 14, STEP = 45; // char px, ~22 fps ceiling
+  const FS = 14, FRAME_INTERVAL_MS = 45;
   let W, H, ys, sp, last = 0;
   function size() {
     W = cv.width = innerWidth; H = cv.height = innerHeight;
@@ -303,7 +493,7 @@ document.getElementById("urlform").addEventListener("submit", (e) => {
   size();
   ctx.fillStyle = "#050a08"; ctx.fillRect(0, 0, W, H);
   requestAnimationFrame(function frame(ts) {
-    if (ts - last < STEP) { requestAnimationFrame(frame); return; }
+    if (ts - last < FRAME_INTERVAL_MS) { requestAnimationFrame(frame); return; }
     last = ts;
     ctx.fillStyle = "rgba(5,10,8,0.14)"; ctx.fillRect(0, 0, W, H);
     ctx.font = FS + "px monospace";

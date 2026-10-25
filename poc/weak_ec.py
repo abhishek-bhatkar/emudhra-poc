@@ -1,14 +1,6 @@
-"""
-Minimal pure-Python NIST P-256 (secp256r1) arithmetic.
+"""Minimal affine P-256 arithmetic for the isolated key-recovery demo. Not production cryptography."""
 
-Only what we need: scalar multiplication of the generator, to (a) derive the
-public key of a deliberately-chosen weak private scalar and (b) brute-force
-recover that scalar from a public key -- exactly the trivial recovery that
-made the real eMudhra/emSign intermediates compromised.
-
-Coordinates are affine tuples (x, y); the point at infinity is None.
-This is NOT production crypto code -- it is deliberately slow and simple.
-"""
+import math
 
 P = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
 A = P - 3
@@ -44,6 +36,13 @@ def point_add(p1, p2):
     return (x3, y3)
 
 
+def point_neg(point):
+    if point is None:
+        return None
+    x, y = point
+    return (x, (-y) % P)
+
+
 def scalar_mul(d: int, point=G):
     """Double-and-add scalar multiplication."""
     d %= N
@@ -55,3 +54,27 @@ def scalar_mul(d: int, point=G):
         addend = point_add(addend, addend)
         d >>= 1
     return result
+
+
+def bsgs(target, bound: int):
+    """Find d in [1, bound) such that d*G is target, or return None."""
+    if bound <= 1:
+        return None
+
+    width = math.isqrt(bound - 1) + 1
+    baby_steps = {}
+    point = None
+    for scalar in range(width):
+        baby_steps[point] = scalar
+        point = point_add(point, G)
+
+    giant_step = point_neg(scalar_mul(width, G))
+    current = target
+    for giant_index in range((bound + width - 1) // width):
+        baby_index = baby_steps.get(current)
+        if baby_index is not None:
+            scalar = giant_index * width + baby_index
+            if 1 <= scalar < bound and scalar_mul(scalar, G) == target:
+                return scalar
+        current = point_add(current, giant_step)
+    return None

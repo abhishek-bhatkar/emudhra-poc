@@ -1,6 +1,16 @@
 import { connect } from "cloudflare:sockets";
 import crypto from "node:crypto";
 
+const PROBE_BUDGET_MS = 15000;
+const PROBE_ATTEMPT_MS = 5000;
+const DNS_LOOKUP_MS = 3000;
+const MAX_TLS_RECORD_LENGTH = 18432;
+const MAX_HANDSHAKE_BYTES = 256 * 1024;
+const MAX_DOH_ADDRESSES = 8;
+
+class TcpConnectError extends Error {}
+class ProbeTimeoutError extends Error {}
+
 // GET /chain?host=example.com[&port=443]
 // TLS-connects to the host and returns the SPKI SHA-256 of every cert in the
 // served chain. Facts only; the page computes the verdict.
@@ -15,129 +25,291 @@ import crypto from "node:crypto";
 // come back as an error, and the page shows UNKNOWN rather than any green.
 
 export default {
-  async fetch(req, env, ctx) {
-    const cors = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Max-Age": "86400",
-    };
-    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-    if (req.method !== "GET") return json({ error: "GET only" }, 405, cors);
+  async fetch(req, env) {
+    const url = new URL(req.url);
+    const originHeader = req.headers.get("Origin");
+    const allowedOrigins = new Set(
+      (env.ALLOWED_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean),
+    );
+    const origin = originHeader && allowedOrigins.has(originHeader) ? originHeader : null;
 
-    const { searchParams } = new URL(req.url);
-    const host = searchParams.get("host") || "";
-    const port = Number(searchParams.get("port")) || 443;
-    // Hostnames only. Anything wilder smuggles SNI bytes or odd ports.
-    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(host))
-      return json({ error: "bad host" }, 400, cors);
-    if (port < 1 || port > 65535) return json({ error: "bad port" }, 400, cors);
+    if (originHeader && !origin) return json({ error: "origin not allowed" }, 403, null);
+    if (url.pathname !== "/chain") return json({ error: "not found" }, 404, origin);
+    if (req.method === "OPTIONS") return preflight(origin);
+    if (req.method !== "GET") return json({ error: "GET only" }, 405, origin);
 
-    // One probe per host per minute. A spike in traffic for one host is one
-    // handshake, not one handshake per visitor; error and success paths both
-    // need the full original URL as cache key.
-    const cache = await caches.open("chain");
-    const hit = await cache.match(req);
-    if (hit) return hit;
+    const parsed = parseProbeQuery(url);
+    if (parsed.error) return json({ error: parsed.error }, 400, origin);
+    const { host, port } = parsed;
+
+    const limitState = await checkRateLimit(req, env);
+    if (limitState === "limited")
+      return json({ error: "rate limited" }, 429, origin, { "Retry-After": "60" });
+    if (limitState === "unavailable")
+      return json({ error: "rate limiter unavailable" }, 503, origin);
 
     try {
-      const certs = await servedChainFirst(host, port, 12000);
+      const certs = await probeWithDnsFallback(host, port, PROBE_BUDGET_MS);
       const chain = certs.map((der) => {
-        let spki = null;
-        let cn = "";
-        try {
-          const x509 = new crypto.X509Certificate(der);
-          spki = crypto.createHash("sha256")
-            .update(x509.publicKey.export({ type: "spki", format: "der" }))
-            .digest("hex");
-          cn = x509.subject.split("\n").find((l) => l.startsWith("CN="))?.slice(3) || "";
-        } catch {}
+        const x509 = new crypto.X509Certificate(der);
+        const spki = crypto.createHash("sha256")
+          .update(x509.publicKey.export({ type: "spki", format: "der" }))
+          .digest("hex");
+        const cn = x509.subject.split("\n").find((line) => line.startsWith("CN="))?.slice(3) || "";
         return { spki_sha256: spki, subject_cn: cn };
       });
-      return cacheable(json({ host, chain }, 200, cors), req, cache, ctx);
-    } catch (e) {
-      return cacheable(json({ host, error: String((e && e.message) || e) }, 502, cors), req, cache, ctx);
+      return json({ host, port, chain }, 200, origin, {
+        "Cache-Control": "public, max-age=60, stale-if-error=0",
+      });
+    } catch (error) {
+      return json({ host, port, error: errorMessage(error) }, 502, origin);
     }
   },
 };
 
-function cacheable(res, req, cache, ctx) {
-  const body = res.clone();
-  res.headers.append("Cache-Control", "public, max-age=60");
-  ctx.waitUntil(cache.put(req, body));
-  return res;
+function corsHeaders(origin) {
+  const headers = {
+    "Vary": "Origin",
+    "Content-Type": "application/json",
+  };
+  if (origin) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers["Access-Control-Allow-Methods"] = "GET, OPTIONS";
+    headers["Access-Control-Allow-Headers"] = "Content-Type";
+  }
+  return headers;
 }
 
-function json(obj, status, cors) {
-  return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...cors } });
+function preflight(origin) {
+  const headers = corsHeaders(origin);
+  headers["Access-Control-Max-Age"] = "86400";
+  headers["Cache-Control"] = "no-store";
+  return new Response(null, { status: 204, headers });
 }
 
-// Try the hostname, then retry over DoH-resolved IP with the same SNI.
-// Some names behave differently inside the runtime's socket path.
-async function servedChainFirst(host, port, timeoutMs) {
+function json(obj, status, origin, extra = {}) {
+  return new Response(JSON.stringify({ ok: status >= 200 && status < 300, ...obj }), {
+    status,
+    headers: { ...corsHeaders(origin), "Cache-Control": "no-store", ...extra },
+  });
+}
+
+function parseProbeQuery(url) {
+  const allowedParams = new Set(["host", "port"]);
+  for (const key of url.searchParams.keys()) {
+    if (!allowedParams.has(key)) return { error: "unexpected query parameter" };
+  }
+
+  const hosts = url.searchParams.getAll("host");
+  const ports = url.searchParams.getAll("port");
+  if (hosts.length !== 1) return { error: "provide one host" };
+  if (ports.length > 1) return { error: "provide one port" };
+
+  const host = hosts[0].toLowerCase().replace(/\.$/, "");
+  // Cloudflare sockets block localhost and private destinations reached by DNS names.
+  if (host.startsWith("[") || host.includes(":") || isIpLiteral(host))
+    return { error: "host must be a DNS name; IP literals are not supported" };
+  if (host.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(host))
+    return { error: "host must be a fully qualified DNS name" };
+
+  let port = 443;
+  if (ports.length) {
+    if (!/^\d{1,5}$/.test(ports[0])) return { error: "bad port" };
+    port = Number(ports[0]);
+    if (port < 1 || port > 65535) return { error: "bad port" };
+  }
+  return { host, port };
+}
+
+function isIpLiteral(host) {
   try {
-    return await probe(host, port, timeoutMs, host);
-  } catch (first) {
-    let ip;
-    try { ip = await resolveA(host); } catch {}
-    if (!ip) throw first;
-    try {
-      return await probe(ip, port, timeoutMs, host);
-    } catch (second) {
-      throw new Error(String((first && first.message) || first) + " / " + String((second && second.message) || second));
-    }
+    const normalized = new URL("https://" + host + "/").hostname;
+    return normalized.includes(":") || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(normalized);
+  } catch {
+    return true;
   }
 }
 
-async function resolveA(host) {
-  const r = await fetch("https://cloudflare-dns.com/dns-query?name=" + encodeURIComponent(host) + "&type=A",
-    { headers: { accept: "application/dns-json" } });
-  const j = await r.json();
-  const a = (j.Answer || []).find((x) => x.type === 1 && /^(?:\d{1,3}\.){3}\d{1,3}$/.test(x.data || ""));
-  return a ? a.data : null;
+async function checkRateLimit(req, env) {
+  const ip = req.headers.get("CF-Connecting-IP");
+  if (!ip || !env.CHAIN_RATE_LIMITER) return "unavailable";
+  try {
+    const { success } = await env.CHAIN_RATE_LIMITER.limit({ key: ip });
+    return success ? "allowed" : "limited";
+  } catch {
+    return "unavailable";
+  }
+}
+
+function errorMessage(error) {
+  return String((error && error.message) || error);
+}
+
+async function probeWithDnsFallback(host, port, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let hostnameError;
+  const withHostnameFailure = (detail) =>
+    "hostname probe failed: " + errorMessage(hostnameError) + "; " + detail;
+  try {
+    return await probe(host, port, Math.min(remainingMs(deadline), PROBE_ATTEMPT_MS), host);
+  } catch (error) {
+    if (!(error instanceof TcpConnectError)) throw error;
+    hostnameError = error;
+  }
+
+  let addresses;
+  try {
+    addresses = await resolveA(host, Math.min(remainingMs(deadline), DNS_LOOKUP_MS));
+  } catch (error) {
+    if (error instanceof ProbeTimeoutError) throw error;
+    throw new Error(withHostnameFailure("A-record lookup failed: " + errorMessage(error)));
+  }
+  if (!addresses.length)
+    throw new Error(withHostnameFailure("no public A record found"));
+
+  const connectErrors = [];
+  for (const ip of addresses) {
+    try {
+      return await probe(ip, port, Math.min(remainingMs(deadline), PROBE_ATTEMPT_MS), host);
+    } catch (error) {
+      if (error instanceof ProbeTimeoutError) throw error;
+      if (!(error instanceof TcpConnectError)) {
+        throw new Error(withHostnameFailure("resolved-IP TLS probe failed: " + errorMessage(error)));
+      }
+      connectErrors.push(ip + ": " + errorMessage(error));
+      if (Date.now() >= deadline) throw new ProbeTimeoutError("probe timed out");
+    }
+  }
+  throw new Error(withHostnameFailure("resolved-IP connects failed: " + connectErrors.join("; ")));
+}
+
+function remainingMs(deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new ProbeTimeoutError("probe timed out");
+  return remaining;
+}
+
+async function resolveA(host, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch("https://cloudflare-dns.com/dns-query?name=" + encodeURIComponent(host) + "&type=A",
+      { headers: { accept: "application/dns-json" }, signal: controller.signal });
+    if (!response.ok) throw new Error("DNS lookup returned HTTP " + response.status);
+    const result = await response.json();
+    return [...new Set((result.Answer || [])
+      .filter((answer) => answer.type === 1 && isPublicIPv4(answer.data))
+      .map((answer) => answer.data))]
+      .slice(0, MAX_DOH_ADDRESSES);
+  } catch (error) {
+    if (controller.signal.aborted) throw new ProbeTimeoutError("DNS lookup timed out");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function isIPv4(address) {
+  const octets = String(address || "").split(".");
+  return octets.length === 4 && octets.every((octet) => /^\d{1,3}$/.test(octet)
+    && Number(octet) >= 0 && Number(octet) <= 255);
+}
+
+function isPublicIPv4(address) {
+  if (!isIPv4(address)) return false;
+  const [first, second, third] = address.split(".").map(Number);
+  return first !== 0 && first !== 10 && first !== 127
+    && !(first === 100 && second >= 64 && second <= 127)
+    && !(first === 169 && second === 254)
+    && !(first === 172 && second >= 16 && second <= 31)
+    && !(first === 192 && second === 0 && third === 0)
+    && !(first === 192 && second === 0 && third === 2)
+    && !(first === 192 && second === 88 && third === 99)
+    && !(first === 192 && second === 168)
+    && !(first === 198 && (second === 18 || second === 19))
+    && !(first === 198 && second === 51 && third === 100)
+    && !(first === 203 && second === 0 && third === 113)
+    && first < 224;
 }
 
 // Open TCP, send a TLS 1.2 ClientHello, reassemble the handshake stream, and
 // return the raw DER certificates from the Certificate message.
 // target may be a hostname or an IP; sni is the ServerName to present.
 async function probe(target, port, timeoutMs, sni) {
-  const socket = connect({ hostname: target, port }, { allowHalfOpen: true });
+  let socket;
+  try {
+    socket = connect({ hostname: target, port }, { allowHalfOpen: true });
+  } catch (error) {
+    throw new TcpConnectError("tcp connect failed: " + errorMessage(error));
+  }
   const writer = socket.writable.getWriter();
   const reader = socket.readable.getReader();
-  const dead = setTimeout(() => { try { socket.close(); } catch {} }, timeoutMs);
+  let timedOut = false;
+  const dead = setTimeout(() => {
+    timedOut = true;
+    try { socket.close(); } catch {}
+  }, timeoutMs);
 
   try {
     try {
       await socket.opened;
-    } catch (e) {
-      throw new Error("tcp connect failed: " + (e && e.message || e));
+    } catch (error) {
+      if (timedOut) throw new TcpConnectError("tcp connect timed out");
+      throw new TcpConnectError("tcp connect failed: " + errorMessage(error));
     }
-    await writer.write(clientHello(sni));
+    if (timedOut) throw new TcpConnectError("tcp connect timed out");
+    try {
+      await writer.write(clientHello(sni));
+    } catch (error) {
+      if (timedOut) throw new ProbeTimeoutError("probe timed out");
+      throw new Error("TLS write failed: " + errorMessage(error));
+    }
 
-    const certs = [];
     let hsBuf = new Uint8Array(0);
-    let recBuf = new Uint8Array(0);   // bytes not yet forming a complete record
+    let recBuf = new Uint8Array(0);   // incomplete TLS record bytes
     while (true) {
       let rec;
-      try { rec = await reader.read(); } catch (e) { throw new Error("tls read failed: " + (e && e.message || e)); }
-      if (rec.done) throw new Error("connection closed before certificate");
-      let stream = recBuf.length ? concat(recBuf, new Uint8Array(rec.value)) : new Uint8Array(rec.value);
+      try { rec = await reader.read(); } catch (error) {
+        if (timedOut) throw new ProbeTimeoutError("probe timed out");
+        throw new Error("tls read failed: " + errorMessage(error));
+      }
+      if (rec.done) {
+        if (timedOut) throw new ProbeTimeoutError("probe timed out");
+        throw new Error("connection closed before certificate");
+      }
+      const chunk = rec.value instanceof Uint8Array ? rec.value : new Uint8Array(rec.value);
+      if (recBuf.length + chunk.length > MAX_HANDSHAKE_BYTES + MAX_TLS_RECORD_LENGTH)
+        throw new Error("TLS input exceeds the size limit");
+      const stream = recBuf.length ? concat(recBuf, chunk) : chunk;
       let off = 0;
       while (true) {
         if (stream.length - off < 5) break;          // header split across chunks
         const type = stream[off];
         const len = (stream[off + 3] << 8) | stream[off + 4];
+        if (len > MAX_TLS_RECORD_LENGTH) throw new Error("TLS record exceeds the size limit");
         if (off + 5 + len > stream.length) break;    // body split across chunks
-        if (type === 21) throw new Error("tls alert " + ((stream[off + 5] << 8) | stream[off + 6]));
-        if (type === 22) hsBuf = concat(hsBuf, stream.subarray(off + 5, off + 5 + len));
+        if (type === 21) {
+          if (len < 2) throw new Error("truncated TLS alert");
+          const level = stream[off + 5];
+          const description = stream[off + 6];
+          const levelName = level === 1 ? "warning" : level === 2 ? "fatal" : "unknown level";
+          const descriptionName = ({ 40: "handshake_failure", 70: "protocol_version" })[description] || "unknown alert";
+          throw new Error("TLS alert " + levelName + " " + descriptionName
+            + " (level " + level + ", description " + description + ")");
+        }
+        if (type === 22) {
+          const fragment = stream.subarray(off + 5, off + 5 + len);
+          if (hsBuf.length + fragment.length > MAX_HANDSHAKE_BYTES)
+            throw new Error("TLS handshake exceeds the size limit");
+          hsBuf = concat(hsBuf, fragment);
+        }
         off += 5 + len;
       }
       recBuf = stream.subarray(off);
-      // Walk complete handshake messages inside hsBuf.
       let pos = 0;
       while (pos + 4 <= hsBuf.length) {
         const mlen = (hsBuf[pos + 1] << 16) | (hsBuf[pos + 2] << 8) | hsBuf[pos + 3];
-        if (pos + 4 + mlen > hsBuf.length) break;      // message split across records
+        if (pos + 4 + mlen > hsBuf.length) break;      // message continues in the next record
         if (hsBuf[pos] === 11) {
           const got = certList(hsBuf.subarray(pos + 4, pos + 4 + mlen));
           if (!got.length) throw new Error("no certificates in chain");
@@ -157,28 +329,34 @@ async function probe(target, port, timeoutMs, sni) {
 
 // Certificate message body = u24 listLen, then of [ u24 certLen, DER ]*
 function certList(body) {
+  if (body.length < 3) throw new Error("malformed certificate list");
   const listLen = (body[0] << 16) | (body[1] << 8) | body[2];
-  const end = Math.min(3 + listLen, body.length);
-  const out = [];
-  let p = 3;
-  while (p + 3 <= end) {
-    const clen = (body[p] << 16) | (body[p + 1] << 8) | body[p + 2];
-    p += 3;
-    if (clen === 0 || p + clen > end) throw new Error("malformed certificate entry");
-    out.push(Buffer.from(body.subarray(p, p + clen)));
-    p += clen;
+  const end = 3 + listLen;
+  if (end !== body.length) throw new Error("truncated certificate list");
+
+  const certs = [];
+  let pos = 3;
+  while (pos < end) {
+    if (pos + 3 > end) throw new Error("truncated certificate length");
+    const certLen = (body[pos] << 16) | (body[pos + 1] << 8) | body[pos + 2];
+    pos += 3;
+    if (certLen === 0 || pos + certLen > end) throw new Error("malformed certificate entry");
+    certs.push(Buffer.from(body.subarray(pos, pos + certLen)));
+    pos += certLen;
   }
-  return out;
+  return certs;
 }
 
 function concat(a, b) {
   const out = new Uint8Array(a.length + b.length);
-  out.set(a); out.set(b, a.length);
+  out.set(a);
+  out.set(b, a.length);
   return out;
 }
 
-// Minimal TLS 1.2 ClientHello: SNI, eight ECDHE AES-GCM suites, three curves,
-// eight signature algos. Fixed sizes; server_name carries one hostname.
+// Minimal TLS 1.2 ClientHello: SNI, eight common cipher suites, three groups,
+// eight signature algorithms, and uncompressed EC points. server_name carries
+// one hostname.
 function clientHello(host) {
   const name = ascii(host);
   // server_name extension body: u16 listLen(3+name), u8 nametype 0, u16 nameLen, name
@@ -189,16 +367,16 @@ function clientHello(host) {
   const extBytes = pack([
     ext(0x0000, sni),
     ext(0x000a, pack([u16(groups.length)]), groups),
+    ext(0x000b, pack([[1], [0]])),
     ext(0x000d, pack([u16(sigalgs.length)]), sigalgs),
   ]);
   const exts = pack([u16(extBytes.length)], extBytes);
 
-  const cipherLenU16 = u16(suites.length);
   const hello = pack([
     u16(0x0303),                                   // client_version = TLS 1.2
     crypto.getRandomValues(new Uint8Array(32)),    // random
     [0],                                           // session_id: none
-    cipherLenU16, suites,
+    u16(suites.length), suites,
     [1, 0],                                        // compression: null only
     exts,
   ]);
@@ -212,20 +390,19 @@ function record(type, fragment, version) {
 
 function ext(type, ...bodies) { return pack([u16(type), u16(sum(bodies))], ...bodies); }
 
-function sum(bodies) { return bodies.reduce((n, b) => n + b.length, 0); }
+function sum(bodies) { return bodies.reduce((total, body) => total + body.length, 0); }
 
-function u16(n) { return [n >> 8, n & 0xff]; }
-function u24(n) { return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff]; }
+function u16(value) { return [value >> 8, value & 0xff]; }
+function u24(value) { return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]; }
 
-// pack: arrays / numbers (bytes) and Uint8Arrays, flattened left to right.
 function pack(...items) {
   const out = new Uint8Array(count(...items));
-  let i = 0;
+  let index = 0;
   const write = (...chunks) => {
-    for (const c of chunks) {
-      if (c instanceof Uint8Array) { out.set(c, i); i += c.length; }
-      else if (Array.isArray(c)) write(...c);
-      else out[i++] = c & 0xff;
+    for (const chunk of chunks) {
+      if (chunk instanceof Uint8Array) { out.set(chunk, index); index += chunk.length; }
+      else if (Array.isArray(chunk)) write(...chunk);
+      else out[index++] = chunk & 0xff;
     }
   };
   write(...items);
@@ -233,17 +410,21 @@ function pack(...items) {
 }
 
 function count(...items) {
-  let n = 0;
-  for (const c of items) {
-    if (c instanceof Uint8Array) n += c.length;
-    else if (Array.isArray(c)) n += count(...c);
-    else n++;
+  let length = 0;
+  for (const chunk of items) {
+    if (chunk instanceof Uint8Array) length += chunk.length;
+    else if (Array.isArray(chunk)) length += count(...chunk);
+    else length++;
   }
-  return n;
+  return length;
 }
 
-function ascii(s) {
-  const out = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 0x7f;
+function ascii(value) {
+  const out = new Uint8Array(value.length);
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code > 0x7f) throw new Error("SNI must be ASCII");
+    out[index] = code;
+  }
   return out;
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# eMudhra stale-trust-store MITM PoC -- full pipeline (lab-only).
+# Lab-only full pipeline.
 set -euo pipefail
 cd "$(dirname "$0")"
 

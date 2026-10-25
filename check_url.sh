@@ -1,93 +1,15 @@
 #!/usr/bin/env bash
 # Usage: ./check_url.sh <url>
-# Reports whether the served chain contains a compromised eMudhra key
-# and whether this machine's trust store accepted it.
 set -u
 
-url=${1:?usage: ./check_url.sh <url>}
-case $url in
-  http://*)  echo "Refusing http:// URLs - the TLS probes only make sense on https."; exit 2 ;;
-  https://*) ;;
-  *)         echo "Prepend https:// (inside ./check_url.sh https://.../)."; exit 2 ;;
-esac
-hostport=$(awk -F/ '{print ($3 ~ /:/ ? $3 : $3":443")}' <<<"$url")
-spki_file="$(dirname "$0")/keys/compromised_spki.txt"
-
-if [ ! -s "$spki_file" ]; then
-  echo "Compromised SPKI list missing; fetching the operator's public report..."
-  mkdir -p "$(dirname "$0")/keys"
-  tmp=$(mktemp -d)
-  curl -q -sS -o "$tmp/db.json" -m 20 https://emudhra.we-have-a-problem.com/impacted-intermediates.json
-  for pem in $(python3 -c "import json,sys;[print(c['pem'].encode().hex()) for c in json.load(open(sys.argv[1]))]" "$tmp/db.json"); do
-    echo -n "$pem" | xxd -r -p | \
-      openssl x509 -pubkey -noout 2>/dev/null | \
-      openssl pkey -pubin -outform DER 2>/dev/null | \
-      openssl dgst -sha256 | awk '{print $2}'
-  done | sort -u > "$spki_file.tmp"
-  mv "$spki_file.tmp" "$spki_file"
-  rm -rf "$tmp"
-  n=$(wc -l < "$spki_file" | tr -d ' ')
-  if [ "$n" != 8 ]; then
-    echo "Expected 8 compromised SPKI hashes, got $n. Aborting rather than answering NOT APPLICABLE to everything."
-    rm -f "$spki_file"
-    exit 2
-  fi
-  echo "Cached $n hashes to $spki_file"
-fi
-
-tmp_dir=$(mktemp -d)
-servername="${url#*://}"; servername="${servername%%/*}"; servername="${servername%%:*}"
-TMP_DIR="$tmp_dir" openssl s_client -connect "$hostport" -servername "$servername" -showcerts </dev/null 2>/dev/null > "$tmp_dir/sc.raw"
-TMP_DIR="$tmp_dir" python3 -c "
-import os, re
-data = open(os.path.join(os.environ['TMP_DIR'], 'sc.raw')).read()
-certs = re.findall(r'-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----', data, re.S)
-for i, c in enumerate(certs):
-    open(os.path.join(os.environ['TMP_DIR'], f'c{i}.pem'), 'w').write(c + '\n')
-"
-
-match=""
-verify="?"
-n=0
-for cert in "$tmp_dir"/c*.pem; do
-  [ -f "$cert" ] || continue
-  h=$(openssl x509 -in "$cert" -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256 | awk '{print $2}')
-  n=$((n+1))
-  if grep -qx "$h" "$spki_file"; then
-    subj=$(openssl x509 -in "$cert" -noout -subject | sed 's/subject=//')
-    match="cert $n in the chain: $subj"
-  fi
-  rm -f "$cert"
-done
-rm -rf "$tmp_dir"
-if [ $n = 0 ]; then
-  echo "VERDICT: UNKNOWN - no certificates served for $url"
+if [ "$#" -ne 1 ]; then
+  echo "usage: ./check_url.sh <url>"
   exit 2
 fi
 
-curl -q -sS -o /dev/null -m 20 "$url" 2>/dev/null
-rc=$?
-case $rc in
-  0)  verify="this client ACCEPTED the chain" ;;
-  60) verify="this client REJECTED the chain (TLS verify failed)" ;;
-  *)  verify="no curl signal (exit $rc)" ;;
-esac
-
-echo "URL:      $url"
-echo "Chain:    $n certificate(s) served"
-[ -n "$match" ] && echo "Chain:    $match (matches a compromised SPKI hash)" || echo "Chain:    no compromised key in the served chain"
-echo "Trust:    $verify"
-if [ -n "$match" ] && [ "$rc" = 0 ]; then
-  echo "VERDICT:  VULNERABLE - forged chains through these keys validate on this machine"
-  exit 1
-fi
-if [ -n "$match" ] && [ "$rc" = 60 ]; then
-  echo "VERDICT:  SAFE for this client (chain still exists, but you reject it)"
-  exit 0
-fi
-if [ -n "$match" ]; then
-  echo "VERDICT:  UNKNOWN - the chain has a compromised key, but curl gave no signal (exit $rc)"
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if ! command -v python3 >/dev/null; then
+  echo "python3 is required"
   exit 2
 fi
-echo "VERDICT:  NOT APPLICABLE - this URL does not exercise the compromised keys"
-exit 0
+exec python3 "$here/tools/tlsfacts.py" check-url "$1"

@@ -2,3 +2,17 @@ name = "emudhra-chain-probe"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ALLOWED_ORIGINS = "https://emudhra-poc.bhatkar80.workers.dev,https://abhishek-bhatkar.github.io"
+
+[[ratelimits]]
+name = "CHAIN_RATE_LIMITER"
+namespace_id = "2026102501"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
+[cache]
+enabled = true
