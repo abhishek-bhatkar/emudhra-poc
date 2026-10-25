@@ -1,7 +1,9 @@
 name = "emudhra-poc"
+main = "src/site.js"
 compatibility_date = "2026-09-01"
 
-# Static site only (docs/ from the repo root). No script: requests serve files.
 [assets]
 directory = "../docs"
+binding = "ASSETS"
+run_worker_first = true
 not_found_handling = "404-page"
