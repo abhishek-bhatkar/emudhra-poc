@@ -106,6 +106,7 @@ function parseProbeQuery(url) {
   if (ports.length > 1) return { error: "provide one port" };
 
   const host = hosts[0].toLowerCase().replace(/\.$/, "");
+  // Cloudflare sockets block localhost and private destinations reached by DNS names.
   if (host.startsWith("[") || host.includes(":") || isIpLiteral(host))
     return { error: "host must be a DNS name; IP literals are not supported" };
   if (host.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(host))

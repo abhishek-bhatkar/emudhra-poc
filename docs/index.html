@@ -147,7 +147,7 @@
     <a href="https://blog.mozilla.org/security/2026/10/20/protecting-firefox-users-following-the-compromise-of-emudhra-intermediate-certificates/">Mozilla announcement</a>,
     <a href="https://emudhra.we-have-a-problem.com/">incident page</a>,
     <a href="https://github.com/abhishek-bhatkar/emudhra-poc">lab PoC repo</a>.
-    Browser requests go directly from this device to mozilla.org, crt.sh, and the incident hosts. Custom chain probes run from Cloudflare.
+    Browser requests go directly from this device to mozilla.org, crt.sh, and the incident hosts. Custom chain probes run from Cloudflare. Animation scripts load from jsdelivr, and the page uses Cloudflare Web Analytics.
     <div class="fix">if vulnerable, update: OS trust store, certifi, curl, openssl, Go, Node</div>
   </footer>
 
