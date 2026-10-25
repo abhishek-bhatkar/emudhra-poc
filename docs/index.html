@@ -44,6 +44,10 @@
          padding:14px 0; border-bottom:1px solid var(--line); }
   .row .host { font-family:var(--mono); font-size:13px; color:var(--muted); overflow-wrap:anywhere; }
   .row .kind { color:var(--dim); }
+  .row .open-direct { margin-left:8px; font-family:var(--mono); font-size:11.5px; color:var(--muted); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--line-strong); }
+  .row .open-direct:hover { color:var(--fg); }
+  .row .open-direct:focus-visible { outline:2px solid var(--muted); outline-offset:2px; border-radius:3px; }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   .row .chain-detail { display:block; margin-top:5px; color:var(--warn); font:11px var(--mono); overflow-wrap:anywhere; }
   .row .st { font-family:var(--mono); font-size:11.5px; font-weight:600; letter-spacing:.06em; text-align:right; color:var(--dim); padding:1px 9px; border:1px solid; border-radius:999px; justify-self:end; }
   .row.test.accepted .st { color:var(--bad); background:color-mix(in srgb, var(--bad) 12%, transparent); }
@@ -198,9 +202,23 @@ function makeProbeRow(host, kind) {
   const label = document.createElement("span");
   label.className = "kind";
   label.textContent = " / " + kind;
+  name.append(label);
+  if (kind === "test") {
+    const link = document.createElement("a");
+    link.className = "open-direct";
+    link.href = "https://" + host + "/";
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "open directly";
+    const context = document.createElement("span");
+    context.className = "sr-only";
+    context.textContent = " to " + host + " in a new tab";
+    link.append(context);
+    name.append(link);
+  }
   const detail = document.createElement("span");
   detail.className = "chain-detail";
-  name.append(label, detail);
+  name.append(detail);
   const status = document.createElement("div");
   status.className = "st";
   status.textContent = "probing…";
